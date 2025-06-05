@@ -58,6 +58,8 @@ async def get_trading_data(
     start_date: Optional[datetime] = Query(default=None, description="Start date (ISO format)"),
     end_date: Optional[datetime] = Query(default=None, description="End date (ISO format)"),
     include_vectors: bool = Query(default=False, description="Include vector columns"),
+    order: str = Query(default="desc", regex="^(asc|desc)$", description="Sort order: asc or desc"),
+    sort_by: str = Query(default="timestamp", description="Column to sort by"),
     db: Session = Depends(get_db)
 ):
     """
@@ -70,6 +72,8 @@ async def get_trading_data(
     - **start_date**: Filter records after this date
     - **end_date**: Filter records before this date
     - **include_vectors**: Include ML vector columns in response
+    - **order**: Sort order (asc for oldest first, desc for newest first)
+    - **sort_by**: Column to sort by (default: timestamp)
     """
     try:
         return trading_service.get_trading_data(
@@ -80,7 +84,9 @@ async def get_trading_data(
             offset=offset,
             start_date=start_date,
             end_date=end_date,
-            include_vectors=include_vectors
+            include_vectors=include_vectors,
+            order=order,
+            sort_by=sort_by
         )
     except Exception as e:
         logger.error(f"Error getting trading data for {symbol}_{timeframe}: {e}")

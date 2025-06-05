@@ -8,6 +8,17 @@ const TradingDashboard = () => {
   const [tradingData, setTradingData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // New state for enhanced functionality
+  const [rowLimit, setRowLimit] = useState(50);
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortColumn, setSortColumn] = useState('timestamp');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [showColumnFilters, setShowColumnFilters] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [lastFetchInfo, setLastFetchInfo] = useState(null);
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
@@ -18,9 +29,10 @@ const TradingDashboard = () => {
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
+      setCurrentPage(1); // Reset to first page when selection changes
       fetchTradingData();
     }
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn, currentPage]);
 
   const fetchStats = async () => {
     try {
@@ -45,14 +57,187 @@ const TradingDashboard = () => {
   const fetchTradingData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=50`
-      );
-      const data = await response.json();
+      // Strategy: For oldest data, we need to get the very first records from the database
+      // For newest data, we get the most recent records
+      
+      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}`;
+      let offset = 0;
+      
+      if (sortOrder === 'asc') {
+        // For ASCENDING (oldest first): Get from the very beginning of the dataset
+        offset = (currentPage - 1) * rowLimit;
+        // Try multiple strategies to get oldest data
+        url += `&offset=${offset}&order=asc&sort_by=timestamp`;
+        
+        // Alternative: Try to explicitly request oldest data
+        const oldestUrl = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}&offset=${offset}&order=asc&sort_by=timestamp&from_start=true`;
+        
+        console.log(`🟢 ASCENDING: Requesting OLDEST ${rowLimit} records starting from record ${offset + 1}`);
+        console.log('Trying oldest-first URL:', oldestUrl);
+        
+        // Try the explicit oldest-first URL first
+        try {
+          const response = await fetch(oldestUrl);
+          var data = await response.json();
+          var fetchUrl = oldestUrl;
+        } catch (e) {
+          // Fallback to standard URL
+          const response = await fetch(url);
+          var data = await response.json();
+          var fetchUrl = url;
+        }
+        
+      } else {
+        // For DESCENDING (newest first): Get the most recent data
+        offset = (currentPage - 1) * rowLimit;
+        url += `&offset=${offset}&order=desc&sort_by=timestamp`;
+        
+        console.log(`🔵 DESCENDING: Requesting NEWEST ${rowLimit} records starting from record ${offset + 1}`);
+        console.log('API URL:', url);
+        
+        const response = await fetch(url);
+        var data = await response.json();
+        var fetchUrl = url;
+      }
+      
+      // If we're on ascending and still getting recent data, try a different approach
+      if (sortOrder === 'asc' && data.data && data.data.length > 0) {
+        const firstTimestamp = new Date(data.data[0].timestamp);
+        const currentYear = new Date().getFullYear();
+        const dataYear = firstTimestamp.getFullYear();
+        
+        // If the data is from recent times (same year), try to get older data
+        if (dataYear >= currentYear - 1) {
+          console.log('⚠️ Still getting recent data for ascending, trying alternative approach...');
+          
+          // Try to get data with a much larger offset to reach older records
+          const largeOffset = Math.max(10000, (currentPage - 1) * rowLimit);
+          const alternativeUrl = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}&offset=${largeOffset}&order=asc&sort_by=timestamp`;
+          
+          try {
+            console.log('Trying large offset approach:', alternativeUrl);
+            const altResponse = await fetch(alternativeUrl);
+            const altData = await altResponse.json();
+            
+            if (altData.data && altData.data.length > 0) {
+              const altFirstTimestamp = new Date(altData.data[0].timestamp);
+              // If we got older data, use it
+              if (altFirstTimestamp < firstTimestamp) {
+                console.log('✅ Found older data with large offset approach');
+                data = altData;
+                fetchUrl = alternativeUrl;
+              }
+            }
+          } catch (e) {
+            console.log('Large offset approach failed, using original data');
+          }
+        }
+      }
+      
+      // Estimate total count
+      if (!data.total_count) {
+        // Try to get a better estimate of total records
+        try {
+          const countResponse = await fetch(`${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=1&count_only=true`);
+          const countData = await countResponse.json();
+          data.total_count = countData.total_count || countData.count || data.count || 50000; // Better fallback
+        } catch (e) {
+          data.total_count = data.count || 50000; // Fallback estimate
+        }
+      }
+      
+      // Check if backend properly handled our sort order
+      let backendHandledSorting = false;
+      
+      if (data.data && Array.isArray(data.data) && data.data.length > 1) {
+        const firstTimestamp = new Date(data.data[0].timestamp);
+        const lastTimestamp = new Date(data.data[data.data.length - 1].timestamp);
+        
+        if (sortOrder === 'asc') {
+          // For ascending, first should be older than last
+          backendHandledSorting = firstTimestamp <= lastTimestamp;
+        } else {
+          // For descending, first should be newer than last
+          backendHandledSorting = firstTimestamp >= lastTimestamp;
+        }
+      }
+
+      console.log(`Backend handled sorting properly: ${backendHandledSorting}`);
+
+      if (data.data && Array.isArray(data.data)) {
+        let sortedData = [...data.data];
+        
+        // If backend didn't handle sorting, do it client-side
+        if (!backendHandledSorting) {
+          console.log('Applying client-side sorting...');
+          sortedData.sort((a, b) => {
+            let aVal = a[sortColumn];
+            let bVal = b[sortColumn];
+            
+            // Handle different data types
+            if (sortColumn === 'timestamp') {
+              aVal = new Date(aVal);
+              bVal = new Date(bVal);
+            } else if (typeof aVal === 'string') {
+              aVal = aVal.toLowerCase();
+              bVal = bVal.toLowerCase();
+            }
+            
+            if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+          });
+        }
+        
+        data.data = sortedData;
+        
+        // Enhanced debug information
+        setLastFetchInfo({
+          timestamp: new Date().toLocaleTimeString(),
+          sortOrder: sortOrder,
+          requestedData: sortOrder === 'asc' ? 'OLDEST' : 'NEWEST',
+          rowLimit: rowLimit,
+          currentPage: currentPage,
+          offset: offset,
+          apiUrl: fetchUrl,
+          backendHandledSorting: backendHandledSorting,
+          actualDataRange: data.data.length > 0 ? {
+            first: data.data[0].timestamp,
+            last: data.data[data.data.length - 1].timestamp,
+            firstYear: new Date(data.data[0].timestamp).getFullYear(),
+            lastYear: new Date(data.data[data.data.length - 1].timestamp).getFullYear(),
+            span: `${new Date(data.data[0].timestamp).toLocaleDateString()} to ${new Date(data.data[data.data.length - 1].timestamp).toLocaleDateString()}`
+          } : null,
+          totalRecords: data.total_count || data.count,
+          dataQuality: (() => {
+            if (sortOrder === 'desc') return 'GOOD (Recent data)';
+            
+            // For ascending, check if we're actually getting properly sorted data
+            if (data.data.length > 1) {
+              const firstTime = new Date(data.data[0].timestamp);
+              const lastTime = new Date(data.data[data.data.length - 1].timestamp);
+              
+              // If properly sorted ascending and we're on page 1, this should be good
+              if (firstTime <= lastTime && currentPage === 1) {
+                return 'GOOD (Historical data - oldest first)';
+              } else if (firstTime <= lastTime) {
+                return 'GOOD (Historical data - properly sorted)';
+              } else {
+                return 'POOR (Sorting may be incorrect)';
+              }
+            }
+            
+            // Single record or no data
+            return currentPage === 1 ? 'GOOD (Historical data)' : 'OK (Paginated data)';
+          })()
+        });
+      }
+      
       setTradingData(data);
       setError(null);
     } catch (err) {
-      setError(`Failed to fetch trading data for ${selectedSymbol}_${selectedTimeframe}`);
+      setError(`Failed to fetch trading data for ${selectedSymbol}_${selectedTimeframe}: ${err.message}`);
+      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -75,6 +260,84 @@ const TradingDashboard = () => {
     }
   };
 
+  const handleColumnSort = (column) => {
+    if (sortColumn === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortOrder('desc');
+    }
+    setCurrentPage(1);
+  };
+
+  const handleRowSelect = (index) => {
+    const newSelected = new Set(selectedRows);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedRows(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedRows.size === tradingData?.data.length) {
+      setSelectedRows(new Set());
+    } else {
+      const allRows = new Set(tradingData?.data.map((_, index) => index) || []);
+      setSelectedRows(allRows);
+    }
+  };
+
+  const exportToCSV = () => {
+    if (!tradingData?.data) return;
+    
+    const headers = ['Row', 'Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'];
+    const csvContent = [
+      headers.join(','),
+      ...tradingData.data.map((row, index) => [
+        ((currentPage - 1) * rowLimit) + index + 1,
+        row.timestamp,
+        row.open,
+        row.high,
+        row.low,
+        row.close,
+        row.volume
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedSymbol}_${selectedTimeframe}_data.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const quickSelectTable = (table) => {
+    const [symbol, timeframe] = table.table_name.split('_');
+    setSelectedSymbol(symbol);
+    setSelectedTimeframe(timeframe);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedRows.size === 0) return;
+    
+    if (confirm(`Are you sure you want to delete ${selectedRows.size} selected rows?`)) {
+      // TODO: Implement bulk delete API call
+      alert('Bulk delete functionality would be implemented here');
+      setSelectedRows(new Set());
+    }
+  };
+
+  const handleRefresh = () => {
+    setSelectedRows(new Set());
+    fetchTradingData();
+  };
+
+  const totalPages = Math.ceil((tradingData?.total_count || tradingData?.count || 0) / rowLimit);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -84,7 +347,7 @@ const TradingDashboard = () => {
             Trading Data Dashboard
           </h1>
           <p className="text-gray-600">
-            Real-time access to your PostgreSQL trading database
+            Real-time access to your PostgreSQL trading database • pgAdmin but better
           </p>
         </div>
 
@@ -135,10 +398,33 @@ const TradingDashboard = () => {
           </div>
         )}
 
-        {/* Controls */}
+        {/* Enhanced Controls */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Selection</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Data Selection & Controls</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowColumnFilters(!showColumnFilters)}
+                className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1"
+              >
+                🔍 Filters {showColumnFilters ? '▼' : '▶'}
+              </button>
+              <button
+                onClick={handleRefresh}
+                className="px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors flex items-center gap-1"
+              >
+                🔄 Refresh
+              </button>
+              <button
+                onClick={() => setShowDebugInfo(!showDebugInfo)}
+                className="px-3 py-2 text-sm bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-md transition-colors flex items-center gap-1"
+              >
+                🐛 Debug {showDebugInfo ? '▼' : '▶'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Symbol
@@ -172,20 +458,177 @@ const TradingDashboard = () => {
                 <option value="1d">1 Day</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rows per page
+              </label>
+              <select
+                value={rowLimit}
+                onChange={(e) => setRowLimit(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={25}>25 rows</option>
+                <option value={50}>50 rows</option>
+                <option value={100}>100 rows</option>
+                <option value={250}>250 rows</option>
+                <option value={500}>500 rows</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Sort Order
+              </label>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="desc">⬇ Descending (Newest first)</option>
+                <option value="asc">⬆ Ascending (Oldest first)</option>
+              </select>
+            </div>
           </div>
+
+          {/* Search and Advanced Controls */}
+          {showColumnFilters && (
+            <div className="mt-4 pt-4 border-t border-gray-200 bg-gray-50 rounded-md p-4">
+              <h4 className="text-md font-medium text-gray-800 mb-3">Advanced Filters & Controls</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Search Data
+                  </label>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search in all columns..."
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sort Column
+                  </label>
+                  <select
+                    value={sortColumn}
+                    onChange={(e) => setSortColumn(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="timestamp">📅 Timestamp</option>
+                    <option value="open">📈 Open Price</option>
+                    <option value="high">🔺 High Price</option>
+                    <option value="low">🔻 Low Price</option>
+                    <option value="close">💰 Close Price</option>
+                    <option value="volume">📊 Volume</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSortColumn('timestamp');
+                      setSortOrder('desc');
+                      setCurrentPage(1);
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+                  >
+                    🔄 Reset Filters
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Debug Information Panel */}
+          {showDebugInfo && lastFetchInfo && (
+            <div className="mt-4 pt-4 border-t border-gray-200 bg-yellow-50 rounded-md p-4">
+              <h4 className="text-md font-medium text-yellow-800 mb-3">🐛 Debug Information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p><strong>Last Fetch:</strong> {lastFetchInfo.timestamp}</p>
+                  <p><strong>Requested Data:</strong> <span className={lastFetchInfo.requestedData === 'OLDEST' ? 'text-green-600' : 'text-blue-600'}>{lastFetchInfo.requestedData}</span> {lastFetchInfo.rowLimit} records</p>
+                  <p><strong>Page:</strong> {lastFetchInfo.currentPage} (offset: {lastFetchInfo.offset})</p>
+                  <p><strong>Sort:</strong> {lastFetchInfo.sortOrder} by {lastFetchInfo.sortColumn}</p>
+                  <p><strong>Data Quality:</strong> <span className={lastFetchInfo.dataQuality?.includes('GOOD') ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.dataQuality}</span></p>
+                </div>
+                <div>
+                  <p><strong>Backend Sorting:</strong> <span className={lastFetchInfo.backendHandledSorting ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.backendHandledSorting ? '✅ Working' : '❌ Not Working'}</span></p>
+                  <p><strong>Total Records:</strong> {lastFetchInfo.totalRecords?.toLocaleString() || 'Unknown'}</p>
+                  {lastFetchInfo.actualDataRange && (
+                    <>
+                      <p><strong>Data Span:</strong> {lastFetchInfo.actualDataRange.span}</p>
+                      <p><strong>First Record:</strong> {new Date(lastFetchInfo.actualDataRange.first).toLocaleString()}</p>
+                      <p><strong>Last Record:</strong> {new Date(lastFetchInfo.actualDataRange.last).toLocaleString()}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 p-2 bg-yellow-100 rounded text-xs">
+                <strong>💡 Tip:</strong> If "Data Quality" shows "POOR" for ascending order, your backend may only be returning recent data. 
+                For true oldest records, you may need to modify your backend API to support historical data access.
+              </div>
+              <div className="mt-2 text-xs text-gray-600 break-all">
+                <strong>API URL:</strong> {lastFetchInfo.apiUrl}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Trading Data Table */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {selectedSymbol.toUpperCase()} - {selectedTimeframe} Data
-              {tradingData && (
-                <span className="ml-2 text-sm text-gray-500">
-                  ({tradingData.count} records)
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {selectedSymbol.toUpperCase()} - {selectedTimeframe} Data
+                {tradingData && (
+                  <span className="ml-2 text-sm text-gray-500">
+                    ({tradingData.count || tradingData.data?.length || 0} records)
+                  </span>
+                )}
+                <br />
+                <span className={`text-sm font-medium ${sortOrder === 'asc' ? 'text-green-600' : 'text-blue-600'}`}>
+                  {sortOrder === 'asc' ? '🟢 Showing OLDEST data first' : '🔵 Showing NEWEST data first'} 
+                  {lastFetchInfo && (
+                    <span className="text-gray-500 ml-2">
+                      (Backend sorting: {lastFetchInfo.backendHandledSorting ? '✅' : '❌ using client-side fallback'})
+                    </span>
+                  )}
                 </span>
+              </h3>
+              {selectedRows.size > 0 && (
+                <p className="text-sm text-blue-600 mt-1">
+                  {selectedRows.size} row(s) selected
+                </p>
               )}
-            </h3>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={exportToCSV}
+                disabled={!tradingData?.data?.length}
+                className="px-3 py-2 text-sm bg-green-100 hover:bg-green-200 text-green-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                📊 Export CSV
+              </button>
+              {selectedRows.size > 0 && (
+                <>
+                  <button
+                    onClick={handleBulkDelete}
+                    className="px-3 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    🗑️ Delete Selected
+                  </button>
+                  <button
+                    onClick={() => setSelectedRows(new Set())}
+                    className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    ✖️ Clear Selection
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           
           {loading ? (
@@ -193,60 +636,166 @@ const TradingDashboard = () => {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <p className="mt-2 text-gray-600">Loading trading data...</p>
             </div>
-          ) : tradingData && tradingData.data.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Timestamp
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Open
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      High
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Low
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Close
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Volume
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {tradingData.data.map((row, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatTimestamp(row.timestamp)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatPrice(row.open)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                        {formatPrice(row.high)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                        {formatPrice(row.low)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        {formatPrice(row.close)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {row.volume ? row.volume.toLocaleString() : 'N/A'}
-                      </td>
+          ) : tradingData && tradingData.data && tradingData.data.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.size === tradingData.data.length && tradingData.data.length > 0}
+                          onChange={handleSelectAll}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        #
+                      </th>
+                      {[
+                        { key: 'timestamp', label: 'Timestamp', icon: '📅' },
+                        { key: 'open', label: 'Open', icon: '📈' },
+                        { key: 'high', label: 'High', icon: '🔺' },
+                        { key: 'low', label: 'Low', icon: '🔻' },
+                        { key: 'close', label: 'Close', icon: '💰' },
+                        { key: 'volume', label: 'Volume', icon: '📊' }
+                      ].map(({ key, label, icon }) => (
+                        <th
+                          key={key}
+                          onClick={() => handleColumnSort(key)}
+                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            <span className="mr-1">{icon}</span>
+                            {label}
+                            {sortColumn === key && (
+                              <span className="ml-1 text-blue-600">
+                                {sortOrder === 'asc' ? '↑' : '↓'}
+                              </span>
+                            )}
+                            <span className="ml-1 text-gray-400">⇅</span>
+                          </div>
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {tradingData.data.map((row, index) => {
+                      const rowNumber = ((currentPage - 1) * rowLimit) + index + 1;
+                      return (
+                        <tr 
+                          key={index} 
+                          className={`hover:bg-gray-50 transition-colors ${
+                            selectedRows.has(index) ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                          }`}
+                        >
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedRows.has(index)}
+                              onChange={() => handleRowSelect(index)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-mono">
+                            {rowNumber}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
+                            {formatTimestamp(row.timestamp)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
+                            {formatPrice(row.open)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-green-600 font-mono font-semibold">
+                            {formatPrice(row.high)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600 font-mono font-semibold">
+                            {formatPrice(row.low)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono font-bold">
+                            {formatPrice(row.close)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-mono">
+                            {row.volume ? row.volume.toLocaleString() : 'N/A'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Enhanced Pagination */}
+              {totalPages > 1 && (
+                <div className="bg-white px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center text-sm text-gray-700">
+                    <span>
+                      Showing {((currentPage - 1) * rowLimit) + 1} to {Math.min(currentPage * rowLimit, tradingData.total_count || tradingData.count || tradingData.data.length)} 
+                      {' '}of {(tradingData.total_count || tradingData.count || tradingData.data.length)?.toLocaleString()} results
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        console.log(`🔸 First button clicked - setting page to 1 (was ${currentPage})`);
+                        setCurrentPage(1);
+                      }}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      ⏮ First
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newPage = currentPage - 1;
+                        console.log(`🔸 Previous button clicked - setting page to ${newPage} (was ${currentPage})`);
+                        setCurrentPage(newPage);
+                      }}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      ⬅ Previous
+                    </button>
+                    <span className="px-3 py-2 text-sm bg-gray-100 rounded-md">
+                      Page {currentPage} of {totalPages} ({(tradingData.total_count || tradingData.count || 0).toLocaleString()} total records)
+                    </span>
+                    <button
+                      onClick={() => {
+                        const newPage = currentPage + 1;
+                        console.log(`🔸 Next button clicked - setting page to ${newPage} (was ${currentPage})`);
+                        setCurrentPage(newPage);
+                      }}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      Next ➡
+                    </button>
+                    <button
+                      onClick={() => {
+                        console.log(`🔸 Last button clicked - setting page to ${totalPages} (was ${currentPage})`);
+                        setCurrentPage(totalPages);
+                      }}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      Last ⏭
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="p-8 text-center text-gray-500">
-              No trading data available for {selectedSymbol}_{selectedTimeframe}
+              <div className="text-4xl mb-4">📊</div>
+              <h3 className="text-lg font-medium mb-2">No Data Available</h3>
+              <p>No trading data available for {selectedSymbol.toUpperCase()}_{selectedTimeframe}</p>
+              <button
+                onClick={handleRefresh}
+                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              >
+                🔄 Try Refresh
+              </button>
             </div>
           )}
         </div>
@@ -256,13 +805,14 @@ const TradingDashboard = () => {
           <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Available Tables</h3>
+              <p className="text-sm text-gray-600 mt-1">Click any table to quickly load its data • Total: {tables.length} tables</p>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Table
+                      Table Name
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Symbol
@@ -276,27 +826,40 @@ const TradingDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Latest Data
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {tables.map((table, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 font-mono">
                         {table.table_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${getSymbolColor(table.symbol)}`}>
+                        <span className={`text-sm font-medium ${getSymbolColor(table.symbol)} bg-gray-100 px-2 py-1 rounded`}>
                           {table.symbol.toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                         {table.timeframe}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {table.row_count ? table.row_count.toLocaleString() : 'N/A'}
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-mono">
+                          {table.row_count ? table.row_count.toLocaleString() : 'N/A'}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
                         {table.latest_timestamp ? formatTimestamp(table.latest_timestamp) : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button
+                          onClick={() => quickSelectTable(table)}
+                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors font-medium"
+                        >
+                          📊 Load Data
+                        </button>
                       </td>
                     </tr>
                   ))}

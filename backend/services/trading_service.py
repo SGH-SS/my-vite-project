@@ -108,7 +108,9 @@ class TradingDataService:
         offset: int = 0,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        include_vectors: bool = False
+        include_vectors: bool = False,
+        order: str = "desc",
+        sort_by: str = "timestamp"
     ) -> TradingDataResponse:
         """Get trading data for a specific symbol and timeframe"""
         
@@ -141,17 +143,37 @@ class TradingDataService:
         if where_conditions:
             where_clause = "WHERE " + " AND ".join(where_conditions)
         
-        # Build the complete query
+        # Validate sort_by column to prevent SQL injection
+        valid_sort_columns = ["timestamp", "open", "high", "low", "close", "volume"]
+        if sort_by not in valid_sort_columns:
+            sort_by = "timestamp"
+        
+        # Validate order
+        if order.lower() not in ["asc", "desc"]:
+            order = "desc"
+        
+        # Build the complete query with proper sorting
         query = text(f"""
             SELECT {select_clause}
             FROM {self.schema}."{table_name}"
             {where_clause}
-            ORDER BY timestamp DESC
+            ORDER BY "{sort_by}" {order.upper()}
             LIMIT :limit OFFSET :offset
         """)
         
         try:
             result = db.execute(query, params).fetchall()
+            
+            # Get total count for pagination (if needed)
+            count_query = text(f"""
+                SELECT COUNT(*)
+                FROM {self.schema}."{table_name}"
+                {where_clause}
+            """)
+            
+            # Remove limit/offset params for count query
+            count_params = {k: v for k, v in params.items() if k not in ["limit", "offset"]}
+            total_count = db.execute(count_query, count_params).scalar()
             
             # Convert results to TradingDataPoint objects
             data_points = []
@@ -176,7 +198,8 @@ class TradingDataService:
                 symbol=symbol,
                 timeframe=timeframe,
                 count=len(data_points),
-                data=data_points
+                data=data_points,
+                total_count=total_count
             )
             
         except SQLAlchemyError as e:

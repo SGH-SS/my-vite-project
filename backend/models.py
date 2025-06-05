@@ -47,6 +47,7 @@ class TradingDataResponse(BaseModel):
     timeframe: str
     count: int
     data: List[TradingDataPoint]
+    total_count: Optional[int] = None
 
 class TableInfo(BaseModel):
     """Information about a trading table"""
