@@ -29,17 +29,30 @@ const TradingDashboard = () => {
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
-      setCurrentPage(1); // Reset to first page when selection changes
       fetchTradingData();
     }
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn, currentPage]);
 
+  useEffect(() => {
+    if (selectedSymbol && selectedTimeframe) {
+      setCurrentPage(1); // Reset to first page when selection changes
+    }
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn]);
+
   const fetchStats = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/stats`);
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response from server');
+      }
+      const data = JSON.parse(text);
       setStats(data);
     } catch (err) {
+      console.error('Error fetching stats:', err);
       setError('Failed to fetch database stats');
     }
   };
@@ -47,15 +60,24 @@ const TradingDashboard = () => {
   const fetchTables = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/tables`);
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response from server');
+      }
+      const data = JSON.parse(text);
       setTables(data);
     } catch (err) {
+      console.error('Error fetching tables:', err);
       setError('Failed to fetch tables');
     }
   };
 
   const fetchTradingData = async () => {
     setLoading(true);
+    console.log(`🚀 fetchTradingData called - Page: ${currentPage}, Symbol: ${selectedSymbol}, Timeframe: ${selectedTimeframe}, RowLimit: ${rowLimit}, SortOrder: ${sortOrder}`);
     try {
       // Strategy: For oldest data, we need to get the very first records from the database
       // For newest data, we get the most recent records
@@ -78,12 +100,26 @@ const TradingDashboard = () => {
         // Try the explicit oldest-first URL first
         try {
           const response = await fetch(oldestUrl);
-          var data = await response.json();
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const text = await response.text();
+          if (!text) {
+            throw new Error('Empty response from server');
+          }
+          var data = JSON.parse(text);
           var fetchUrl = oldestUrl;
         } catch (e) {
           // Fallback to standard URL
           const response = await fetch(url);
-          var data = await response.json();
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const text = await response.text();
+          if (!text) {
+            throw new Error('Empty response from server');
+          }
+          var data = JSON.parse(text);
           var fetchUrl = url;
         }
         
@@ -96,7 +132,14 @@ const TradingDashboard = () => {
         console.log('API URL:', url);
         
         const response = await fetch(url);
-        var data = await response.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const text = await response.text();
+        if (!text) {
+          throw new Error('Empty response from server');
+        }
+        var data = JSON.parse(text);
         var fetchUrl = url;
       }
       
@@ -117,7 +160,14 @@ const TradingDashboard = () => {
           try {
             console.log('Trying large offset approach:', alternativeUrl);
             const altResponse = await fetch(alternativeUrl);
-            const altData = await altResponse.json();
+            if (!altResponse.ok) {
+              throw new Error(`HTTP error! status: ${altResponse.status}`);
+            }
+            const altText = await altResponse.text();
+            if (!altText) {
+              throw new Error('Empty response from server');
+            }
+            const altData = JSON.parse(altText);
             
             if (altData.data && altData.data.length > 0) {
               const altFirstTimestamp = new Date(altData.data[0].timestamp);
@@ -139,9 +189,15 @@ const TradingDashboard = () => {
         // Try to get a better estimate of total records
         try {
           const countResponse = await fetch(`${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=1&count_only=true`);
-          const countData = await countResponse.json();
-          data.total_count = countData.total_count || countData.count || data.count || 50000; // Better fallback
+          if (countResponse.ok) {
+            const countText = await countResponse.text();
+            if (countText) {
+              const countData = JSON.parse(countText);
+              data.total_count = countData.total_count || countData.count || data.count || 50000; // Better fallback
+            }
+          }
         } catch (e) {
+          console.warn('Failed to get count estimate:', e);
           data.total_count = data.count || 50000; // Fallback estimate
         }
       }
@@ -233,6 +289,7 @@ const TradingDashboard = () => {
         });
       }
       
+      console.log(`📊 Setting trading data - Total Count: ${data.total_count}, Data Length: ${data.data?.length}, Current Page: ${currentPage}`);
       setTradingData(data);
       setError(null);
     } catch (err) {
@@ -336,7 +393,12 @@ const TradingDashboard = () => {
     fetchTradingData();
   };
 
-  const totalPages = Math.ceil((tradingData?.total_count || tradingData?.count || 0) / rowLimit);
+  const totalPages = Math.max(1, Math.ceil((tradingData?.total_count || tradingData?.count || tradingData?.data?.length || 0) / rowLimit));
+  
+  // Debug pagination calculations
+  if (tradingData) {
+    console.log(`📄 Pagination Debug - Total Count: ${tradingData.total_count}, Count: ${tradingData.count}, Data Length: ${tradingData.data?.length}, Row Limit: ${rowLimit}, Total Pages: ${totalPages}, Current Page: ${currentPage}`);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -638,6 +700,65 @@ const TradingDashboard = () => {
             </div>
           ) : tradingData && tradingData.data && tradingData.data.length > 0 ? (
             <>
+              {/* Enhanced Pagination - TOP */}
+              {totalPages > 1 && (
+                <div className="bg-white px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center text-sm text-gray-700">
+                    <span>
+                      Showing {((currentPage - 1) * rowLimit) + 1} to {Math.min(currentPage * rowLimit, tradingData.total_count || tradingData.count || tradingData.data.length)} 
+                      {' '}of {(tradingData.total_count || tradingData.count || tradingData.data.length)?.toLocaleString()} results
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        console.log(`🔸 First button clicked - setting page to 1 (was ${currentPage}), totalPages: ${totalPages}`);
+                        setCurrentPage(1);
+                      }}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      ⏮ First
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newPage = Math.max(1, currentPage - 1);
+                        console.log(`🔸 Previous button clicked - setting page to ${newPage} (was ${currentPage}), totalPages: ${totalPages}`);
+                        setCurrentPage(newPage);
+                      }}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      ⬅ Previous
+                    </button>
+                    <span className="px-3 py-2 text-sm bg-gray-100 rounded-md">
+                      Page {currentPage} of {totalPages} ({(tradingData.total_count || tradingData.count || 0).toLocaleString()} total records)
+                    </span>
+                    <button
+                      onClick={() => {
+                        const newPage = Math.min(totalPages, currentPage + 1);
+                        console.log(`🔸 Next button clicked - setting page to ${newPage} (was ${currentPage}), totalPages: ${totalPages}`);
+                        setCurrentPage(newPage);
+                      }}
+                      disabled={currentPage >= totalPages}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      Next ➡
+                    </button>
+                    <button
+                      onClick={() => {
+                        console.log(`🔸 Last button clicked - setting page to ${totalPages} (was ${currentPage}), totalPages: ${totalPages}`);
+                        setCurrentPage(totalPages);
+                      }}
+                      disabled={currentPage >= totalPages}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                    >
+                      Last ⏭
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -725,65 +846,6 @@ const TradingDashboard = () => {
                   </tbody>
                 </table>
               </div>
-              
-              {/* Enhanced Pagination */}
-              {totalPages > 1 && (
-                <div className="bg-white px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center text-sm text-gray-700">
-                    <span>
-                      Showing {((currentPage - 1) * rowLimit) + 1} to {Math.min(currentPage * rowLimit, tradingData.total_count || tradingData.count || tradingData.data.length)} 
-                      {' '}of {(tradingData.total_count || tradingData.count || tradingData.data.length)?.toLocaleString()} results
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        console.log(`🔸 First button clicked - setting page to 1 (was ${currentPage})`);
-                        setCurrentPage(1);
-                      }}
-                      disabled={currentPage === 1}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                    >
-                      ⏮ First
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newPage = currentPage - 1;
-                        console.log(`🔸 Previous button clicked - setting page to ${newPage} (was ${currentPage})`);
-                        setCurrentPage(newPage);
-                      }}
-                      disabled={currentPage === 1}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                    >
-                      ⬅ Previous
-                    </button>
-                    <span className="px-3 py-2 text-sm bg-gray-100 rounded-md">
-                      Page {currentPage} of {totalPages} ({(tradingData.total_count || tradingData.count || 0).toLocaleString()} total records)
-                    </span>
-                    <button
-                      onClick={() => {
-                        const newPage = currentPage + 1;
-                        console.log(`🔸 Next button clicked - setting page to ${newPage} (was ${currentPage})`);
-                        setCurrentPage(newPage);
-                      }}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                    >
-                      Next ➡
-                    </button>
-                    <button
-                      onClick={() => {
-                        console.log(`🔸 Last button clicked - setting page to ${totalPages} (was ${currentPage})`);
-                        setCurrentPage(totalPages);
-                      }}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                    >
-                      Last ⏭
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           ) : (
             <div className="p-8 text-center text-gray-500">

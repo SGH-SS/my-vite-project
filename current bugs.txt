@@ -1,0 +1,6 @@
+
+
+- sorting buttons on the top row actually do nothing, only change ascending or descending
+- havent tested csv export
+- add a column indicating if that row/candle was green (close>open) or red (close<open)
+
