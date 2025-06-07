@@ -223,29 +223,34 @@ const TradingDashboard = () => {
       if (data.data && Array.isArray(data.data)) {
         let sortedData = [...data.data];
         
-        // If backend didn't handle sorting, do it client-side
-        if (!backendHandledSorting) {
-          console.log('Applying client-side sorting...');
-          sortedData.sort((a, b) => {
-            let aVal = a[sortColumn];
-            let bVal = b[sortColumn];
-            
-            // Handle different data types
-            if (sortColumn === 'timestamp') {
-              aVal = new Date(aVal);
-              bVal = new Date(bVal);
-            } else if (typeof aVal === 'string') {
-              aVal = aVal.toLowerCase();
-              bVal = bVal.toLowerCase();
-            }
-            
-            if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-          });
-        }
+        // Always apply client-side sorting to ensure proper ordering
+        console.log(`🔀 Applying client-side sorting by ${sortColumn} (${sortOrder})...`);
+        console.log(`📊 Sample data before sort:`, sortedData.slice(0, 3).map(row => ({ [sortColumn]: row[sortColumn] })));
+        
+        sortedData.sort((a, b) => {
+          let aVal = a[sortColumn];
+          let bVal = b[sortColumn];
+          
+          // Handle different data types
+          if (sortColumn === 'timestamp') {
+            aVal = new Date(aVal);
+            bVal = new Date(bVal);
+          } else if (typeof aVal === 'string') {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+          } else if (typeof aVal === 'number') {
+            // Numbers - handle null/undefined
+            aVal = aVal || 0;
+            bVal = bVal || 0;
+          }
+          
+          if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+          if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
         
         data.data = sortedData;
+        console.log(`✅ Sorting complete. Sample data after sort:`, sortedData.slice(0, 3).map(row => ({ [sortColumn]: row[sortColumn] })));
         
         // Enhanced debug information
         setLastFetchInfo({
@@ -318,9 +323,13 @@ const TradingDashboard = () => {
   };
 
   const handleColumnSort = (column) => {
+    console.log(`🔄 Column sort clicked: ${column}, current sort: ${sortColumn} ${sortOrder}`);
+    
     if (sortColumn === column) {
+      // Toggle sort order if clicking the same column
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
+      // Set new column and default to descending
       setSortColumn(column);
       setSortOrder('desc');
     }
@@ -349,18 +358,25 @@ const TradingDashboard = () => {
   const exportToCSV = () => {
     if (!tradingData?.data) return;
     
-    const headers = ['Row', 'Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'];
+    const headers = ['Row', 'Timestamp', 'Open', 'High', 'Low', 'Close', 'Candle Type', 'Volume'];
     const csvContent = [
       headers.join(','),
-      ...tradingData.data.map((row, index) => [
-        ((currentPage - 1) * rowLimit) + index + 1,
-        row.timestamp,
-        row.open,
-        row.high,
-        row.low,
-        row.close,
-        row.volume
-      ].join(','))
+      ...tradingData.data.map((row, index) => {
+        const isGreen = row.close > row.open;
+        const isEqual = row.close === row.open;
+        const candleType = isEqual ? 'DOJI' : (isGreen ? 'BULL' : 'BEAR');
+        
+        return [
+          ((currentPage - 1) * rowLimit) + index + 1,
+          row.timestamp,
+          row.open,
+          row.high,
+          row.low,
+          row.close,
+          candleType,
+          row.volume
+        ].join(',');
+      })
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -775,27 +791,30 @@ const TradingDashboard = () => {
                         #
                       </th>
                       {[
-                        { key: 'timestamp', label: 'Timestamp', icon: '📅' },
-                        { key: 'open', label: 'Open', icon: '📈' },
-                        { key: 'high', label: 'High', icon: '🔺' },
-                        { key: 'low', label: 'Low', icon: '🔻' },
-                        { key: 'close', label: 'Close', icon: '💰' },
-                        { key: 'volume', label: 'Volume', icon: '📊' }
-                      ].map(({ key, label, icon }) => (
+                        { key: 'timestamp', label: 'Timestamp', icon: '📅', sortable: true },
+                        { key: 'open', label: 'Open', icon: '📈', sortable: true },
+                        { key: 'high', label: 'High', icon: '🔺', sortable: true },
+                        { key: 'low', label: 'Low', icon: '🔻', sortable: true },
+                        { key: 'close', label: 'Close', icon: '💰', sortable: true },
+                        { key: 'candle_type', label: 'Candle', icon: '🕯️', sortable: false },
+                        { key: 'volume', label: 'Volume', icon: '📊', sortable: true }
+                      ].map(({ key, label, icon, sortable }) => (
                         <th
                           key={key}
-                          onClick={() => handleColumnSort(key)}
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                          onClick={sortable ? () => handleColumnSort(key) : undefined}
+                          className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider select-none ${
+                            sortable ? 'cursor-pointer hover:bg-gray-100 transition-colors' : 'cursor-default'
+                          }`}
                         >
                           <div className="flex items-center">
                             <span className="mr-1">{icon}</span>
                             {label}
-                            {sortColumn === key && (
+                            {sortable && sortColumn === key && (
                               <span className="ml-1 text-blue-600">
                                 {sortOrder === 'asc' ? '↑' : '↓'}
                               </span>
                             )}
-                            <span className="ml-1 text-gray-400">⇅</span>
+                            {sortable && <span className="ml-1 text-gray-400">⇅</span>}
                           </div>
                         </th>
                       ))}
@@ -828,14 +847,38 @@ const TradingDashboard = () => {
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
                             {formatPrice(row.open)}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-green-600 font-mono font-semibold">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono font-semibold">
                             {formatPrice(row.high)}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600 font-mono font-semibold">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono font-semibold">
                             {formatPrice(row.low)}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono font-bold">
                             {formatPrice(row.close)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                            {(() => {
+                              const isGreen = row.close > row.open;
+                              const isEqual = row.close === row.open;
+                              if (isEqual) {
+                                return (
+                                  <div className="flex items-center justify-center">
+                                    <span className="text-gray-500 text-lg">➖</span>
+                                    <span className="ml-1 text-xs text-gray-500 font-medium">DOJI</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="flex items-center justify-center">
+                                  <span className={`text-lg ${isGreen ? 'text-green-600' : 'text-red-600'}`}>
+                                    {isGreen ? '🟢' : '🔴'}
+                                  </span>
+                                  <span className={`ml-1 text-xs font-medium ${isGreen ? 'text-green-700' : 'text-red-700'}`}>
+                                    {isGreen ? 'G' : 'R'}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-mono">
                             {row.volume ? row.volume.toLocaleString() : 'N/A'}
