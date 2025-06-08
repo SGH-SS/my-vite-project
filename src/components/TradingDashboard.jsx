@@ -15,6 +15,7 @@ const TradingDashboard = () => {
   const [sortColumn, setSortColumn] = useState('timestamp');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSearchColumn, setSelectedSearchColumn] = useState('all');
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [showColumnFilters, setShowColumnFilters] = useState(false);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
@@ -322,6 +323,78 @@ const TradingDashboard = () => {
     }
   };
 
+  const getFilteredData = () => {
+    if (!tradingData?.data) return [];
+    if (!searchTerm) return tradingData.data;
+    
+    // Remove commas from search term for better functionality
+    const cleanSearchTerm = searchTerm.replace(/,/g, '');
+    const searchLower = cleanSearchTerm.toLowerCase();
+    
+    return tradingData.data.filter(row => {
+      // If searching all columns (default behavior)
+      if (selectedSearchColumn === 'all') {
+        return (
+          row.timestamp?.toString().toLowerCase().includes(searchLower) ||
+          row.open?.toString().includes(cleanSearchTerm) ||
+          row.high?.toString().includes(cleanSearchTerm) ||
+          row.low?.toString().includes(cleanSearchTerm) ||
+          row.close?.toString().includes(cleanSearchTerm) ||
+          row.volume?.toString().includes(cleanSearchTerm) ||
+          formatTimestamp(row.timestamp).toLowerCase().includes(searchLower) ||
+          formatPrice(row.open).includes(cleanSearchTerm) ||
+          formatPrice(row.high).includes(cleanSearchTerm) ||
+          formatPrice(row.low).includes(cleanSearchTerm) ||
+          formatPrice(row.close).includes(cleanSearchTerm)
+        );
+      }
+      
+      // Column-specific search
+      switch (selectedSearchColumn) {
+        case 'timestamp':
+          return (
+            row.timestamp?.toString().toLowerCase().includes(searchLower) ||
+            formatTimestamp(row.timestamp).toLowerCase().includes(searchLower)
+          );
+        case 'open':
+          return (
+            row.open?.toString().includes(cleanSearchTerm) ||
+            formatPrice(row.open).includes(cleanSearchTerm)
+          );
+        case 'high':
+          return (
+            row.high?.toString().includes(cleanSearchTerm) ||
+            formatPrice(row.high).includes(cleanSearchTerm)
+          );
+        case 'low':
+          return (
+            row.low?.toString().includes(cleanSearchTerm) ||
+            formatPrice(row.low).includes(cleanSearchTerm)
+          );
+        case 'close':
+          return (
+            row.close?.toString().includes(cleanSearchTerm) ||
+            formatPrice(row.close).includes(cleanSearchTerm)
+          );
+        case 'volume':
+          return row.volume?.toString().includes(cleanSearchTerm);
+        default:
+          return true;
+      }
+    });
+  };
+
+  const getFilteredIndices = () => {
+    const filteredData = getFilteredData();
+    const indices = [];
+    tradingData?.data?.forEach((row, index) => {
+      if (filteredData.includes(row)) {
+        indices.push(index);
+      }
+    });
+    return indices;
+  };
+
   const handleColumnSort = (column) => {
     console.log(`🔄 Column sort clicked: ${column}, current sort: ${sortColumn} ${sortOrder}`);
     
@@ -347,11 +420,12 @@ const TradingDashboard = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedRows.size === tradingData?.data.length) {
+    const filteredIndices = getFilteredIndices();
+
+    if (selectedRows.size === filteredIndices.length && filteredIndices.length > 0) {
       setSelectedRows(new Set());
     } else {
-      const allRows = new Set(tradingData?.data.map((_, index) => index) || []);
-      setSelectedRows(allRows);
+      setSelectedRows(new Set(filteredIndices));
     }
   };
 
@@ -582,19 +656,22 @@ const TradingDashboard = () => {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search in all columns..."
+                    placeholder={selectedSearchColumn === 'all' ? 
+                      "Search in all columns..." : 
+                      `Search in ${selectedSearchColumn} column...`}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Sort Column
+                    Search Column
                   </label>
                   <select
-                    value={sortColumn}
-                    onChange={(e) => setSortColumn(e.target.value)}
+                    value={selectedSearchColumn}
+                    onChange={(e) => setSelectedSearchColumn(e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
+                    <option value="all">🔍 ALL COLUMNS</option>
                     <option value="timestamp">📅 Timestamp</option>
                     <option value="open">📈 Open Price</option>
                     <option value="high">🔺 High Price</option>
@@ -607,6 +684,7 @@ const TradingDashboard = () => {
                   <button
                     onClick={() => {
                       setSearchTerm('');
+                      setSelectedSearchColumn('all');
                       setSortColumn('timestamp');
                       setSortOrder('desc');
                       setCurrentPage(1);
@@ -663,7 +741,11 @@ const TradingDashboard = () => {
                 {selectedSymbol.toUpperCase()} - {selectedTimeframe} Data
                 {tradingData && (
                   <span className="ml-2 text-sm text-gray-500">
-                    ({tradingData.count || tradingData.data?.length || 0} records)
+                    ({(() => {
+                      if (!searchTerm) return tradingData.count || tradingData.data?.length || 0;
+                      const filteredCount = getFilteredData().length;
+                      return `${filteredCount} filtered / ${tradingData.count || tradingData.data?.length || 0} total`;
+                    })()} records)
                   </span>
                 )}
                 <br />
@@ -782,7 +864,11 @@ const TradingDashboard = () => {
                       <th className="px-4 py-3 text-left">
                         <input
                           type="checkbox"
-                          checked={selectedRows.size === tradingData.data.length && tradingData.data.length > 0}
+                          checked={(() => {
+                            if (!tradingData?.data.length) return false;
+                            const filteredIndices = getFilteredIndices();
+                            return selectedRows.size === filteredIndices.length && filteredIndices.length > 0;
+                          })()}
                           onChange={handleSelectAll}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
@@ -821,7 +907,7 @@ const TradingDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {tradingData.data.map((row, index) => {
+                    {getFilteredData().map((row, index) => {
                       const rowNumber = ((currentPage - 1) * rowLimit) + index + 1;
                       return (
                         <tr 

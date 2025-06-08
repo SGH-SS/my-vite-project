@@ -2,6 +2,7 @@
 
 - sorting buttons on the top row actually do nothing, only change ascending or descending, lowks working (needs more testing)
 - havent tested csv export
+- ✅ filters search data field does not work - FULLY FIXED! Now has "Search Column" dropdown with "ALL COLUMNS" default + individual column search. Handles commas properly by ignoring them.
 - need to perfect this trading dashboard with features ai suggests, implements, and perfects
 - look at new cursor additions (background, bugbot, tiktok saved, etc)
 
