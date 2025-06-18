@@ -3,7 +3,7 @@ ups n downs, lefts n rights, waves of groom n doom, stay lasered
 post addy day grind
 
 starter prompt:
-suggest some improvements based on where I am currently trying to go (basic summary: pg admin but better):
+suggest some improvements based on where I am currently trying to go (basic summary: pg admin but better)
 
 
 
@@ -15,4 +15,4 @@ lets start with adding lightweight charts ontop of the data we already have (obv
 
 -I want to look at a group of candles and find groups of candles that look most similar to that group, (group of candles is defined as 1-x)
 
-updating readme and memories
+-vector visualization

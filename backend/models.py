@@ -38,8 +38,8 @@ class TradingDataPoint(BaseModel):
     raw_ohlcv_vec: Optional[List[float]] = None
     norm_ohlc: Optional[List[float]] = None
     norm_ohlcv: Optional[List[float]] = None
-    bert_ohlc: Optional[List[float]] = None
-    bert_ohlcv: Optional[List[float]] = None
+    BERT_ohlc: Optional[List[float]] = None
+    BERT_ohlcv: Optional[List[float]] = None
 
 class TradingDataResponse(BaseModel):
     """Response model for trading data queries"""

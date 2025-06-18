@@ -99,6 +99,24 @@ class TradingDataService:
             total_rows=total_rows
         )
 
+    def get_available_columns(self, db: Session, table_name: str) -> List[str]:
+        """Get list of columns that actually exist in the specified table"""
+        try:
+            query = text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = :schema AND table_name = :table_name
+                ORDER BY ordinal_position
+            """)
+            
+            result = db.execute(query, {"schema": self.schema, "table_name": table_name}).fetchall()
+            return [row[0] for row in result]
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Error checking columns for table {table_name}: {e}")
+            # Return basic columns as fallback
+            return ["symbol", "timestamp", "open", "high", "low", "close", "volume"]
+
     def get_trading_data(
         self,
         db: Session,
@@ -116,14 +134,26 @@ class TradingDataService:
         
         table_name = f"{symbol}_{timeframe}"
         
-        # Build the SELECT clause
+        # Get available columns for this table
+        available_columns = self.get_available_columns(db, table_name)
+        
+        # Build the SELECT clause based on available columns
         base_columns = ["symbol", "timestamp", "open", "high", "low", "close", "volume"]
-        vector_columns = ["raw_ohlc_vec", "raw_ohlcv_vec", "norm_ohlc", "norm_ohlcv", "bert_ohlc", "bert_ohlcv"]
+        possible_vector_columns = ["raw_ohlc_vec", "raw_ohlcv_vec", "norm_ohlc", "norm_ohlcv", "BERT_ohlc", "BERT_ohlcv"]
+        
+        # Only include columns that actually exist in the table
+        columns = [col for col in base_columns if col in available_columns]
         
         if include_vectors:
-            columns = base_columns + vector_columns
-        else:
-            columns = base_columns
+            existing_vector_columns = [col for col in possible_vector_columns if col in available_columns]
+            columns.extend(existing_vector_columns)
+            
+            # Log which vector columns are available vs missing
+            missing_vectors = [col for col in possible_vector_columns if col not in available_columns]
+            if missing_vectors:
+                logger.info(f"Vector columns not found in {table_name}: {missing_vectors}")
+            if existing_vector_columns:
+                logger.info(f"Vector columns available in {table_name}: {existing_vector_columns}")
         
         select_clause = ", ".join([f'"{col}"' for col in columns])
         
@@ -182,7 +212,7 @@ class TradingDataService:
                 
                 # Convert vector strings back to lists if needed
                 if include_vectors:
-                    for vec_col in vector_columns:
+                    for vec_col in possible_vector_columns:
                         if vec_col in row_dict and row_dict[vec_col]:
                             try:
                                 # Handle case where vectors are stored as strings
