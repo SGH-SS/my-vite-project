@@ -1,5 +1,47 @@
 import { useState, useEffect } from 'react';
 
+// Reusable InfoTooltip component
+const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const isActive = activeTooltip === id;
+  
+  const triggerClasses = `ml-2 w-4 h-4 rounded-full border text-xs font-bold transition-all duration-200 cursor-pointer ${
+    isDarkMode 
+      ? 'border-gray-500 text-gray-400 hover:border-blue-400 hover:text-blue-400' 
+      : 'border-gray-400 text-gray-500 hover:border-blue-500 hover:text-blue-600'
+  }`;
+
+  const triggerProps = {
+    onClick: () => setActiveTooltip(isActive ? null : id),
+    onMouseEnter: () => setActiveTooltip(id),
+    onMouseLeave: () => setActiveTooltip(null),
+    className: triggerClasses
+  };
+  
+  return (
+    <div className="relative">
+      {asSpan ? (
+        <span {...triggerProps}>i</span>
+      ) : (
+        <button {...triggerProps}>i</button>
+      )}
+      {isActive && (
+        <div className={`absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 rounded-lg shadow-lg border transition-colors duration-200 ${
+          isDarkMode 
+            ? 'bg-gray-800 border-gray-600 text-gray-200' 
+            : 'bg-white border-gray-200 text-gray-800'
+        }`}>
+          <div className="text-sm leading-relaxed">{content}</div>
+          {/* Arrow pointing down */}
+          <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[8px] border-l-transparent border-r-transparent ${
+            isDarkMode ? 'border-t-gray-800' : 'border-t-white'
+          }`}></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Import the new Vector Dashboard component
 const TradingVectorDashboard = ({ 
   selectedSymbol, 
@@ -94,10 +136,26 @@ const TradingVectorDashboard = ({
     const flatVectors = vectors.filter(v => v && Array.isArray(v)).flat();
     if (flatVectors.length === 0) return null;
 
-    const min = Math.min(...flatVectors);
-    const max = Math.max(...flatVectors);
-    const avg = flatVectors.reduce((a, b) => a + b, 0) / flatVectors.length;
-    const std = Math.sqrt(flatVectors.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / flatVectors.length);
+    // Use iterative approach to avoid call stack overflow with large arrays
+    let min = flatVectors[0];
+    let max = flatVectors[0];
+    let sum = 0;
+    
+    for (let i = 0; i < flatVectors.length; i++) {
+      const val = flatVectors[i];
+      if (val < min) min = val;
+      if (val > max) max = val;
+      sum += val;
+    }
+    
+    const avg = sum / flatVectors.length;
+    
+    // Calculate standard deviation
+    let sumSquaredDiffs = 0;
+    for (let i = 0; i < flatVectors.length; i++) {
+      sumSquaredDiffs += Math.pow(flatVectors[i] - avg, 2);
+    }
+    const std = Math.sqrt(sumSquaredDiffs / flatVectors.length);
 
     return { min, max, avg, std, count: vectors.length, dimensions: vectors[0]?.length || 0 };
   };
@@ -127,163 +185,186 @@ const TradingVectorDashboard = ({
   const renderVectorHeatmap = () => {
     if (!vectorData?.data) return null;
 
-    const vectors = vectorData.data
-      .map(row => row[selectedVectorType])
-      .filter(v => v && Array.isArray(v))
-      .slice(0, 20); // Show first 20 for visibility
+    try {
+      const vectors = vectorData.data
+        .map(row => row[selectedVectorType])
+        .filter(v => v && Array.isArray(v))
+        .slice(0, 20); // Show first 20 for visibility
 
-    if (vectors.length === 0) return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No vector data available</div>;
+      if (vectors.length === 0) return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No vector data available</div>;
 
-    const maxDimensions = Math.min(vectors[0]?.length || 0, 20); // Limit to 20 dimensions for display
-    
-    // Calculate global min/max for proper color scaling
-    const allValues = vectors.flat();
-    const globalMin = Math.min(...allValues);
-    const globalMax = Math.max(...allValues);
-    
-    return (
-      <div className="space-y-2">
-        {/* Color scale legend with info tooltip */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4 text-xs">
-            <div className="flex items-center">
+      const maxDimensions = Math.min(vectors[0]?.length || 0, 20); // Limit to 20 dimensions for display
+      
+      // Safety check for very large vectors
+      if (vectors[0]?.length > 1000) {
+        return (
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode 
+              ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' 
+              : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+          }`}>
+            <div className="text-sm font-medium">Large Vector Detected</div>
+            <div className="text-xs mt-1">
+              This vector type has {vectors[0].length} dimensions (likely BERT embeddings). 
+              Heatmap display is limited to smaller vectors for performance.
+            </div>
+            <div className="text-xs mt-2">
+              Try using the "Comparison" view mode instead, or switch to Raw OHLC/OHLCV vectors for heatmap visualization.
+            </div>
+          </div>
+        );
+      }
+      
+      // Calculate global min/max for proper color scaling
+      const allValues = vectors.flat();
+      
+      // Additional safety for very large flattened arrays
+      if (allValues.length > 10000) {
+        return (
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode 
+              ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' 
+              : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+          }`}>
+            <div className="text-sm font-medium">Too Much Data for Heatmap</div>
+            <div className="text-xs mt-1">
+              {allValues.length.toLocaleString()} total values detected. Heatmap visualization is optimized for smaller datasets.
+            </div>
+            <div className="text-xs mt-2">
+              Try reducing the vector limit or using a different vector type.
+            </div>
+          </div>
+        );
+      }
+      
+      const globalMin = Math.min(...allValues);
+      const globalMax = Math.max(...allValues);
+      
+      return (
+        <div className="space-y-2">
+          {/* Color scale legend with info tooltip */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4 text-xs">
+              <div className="flex items-center">
               <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Color Scale:</span>
-              <InfoTooltip id="color-scale" content={
+                <InfoTooltip id="color-scale" content={
+                  <div>
+                    <p className="font-semibold mb-2">🎨 Color Scale</p>
+                    <p className="mb-2">Visual encoding of vector values using color intensity:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li><strong>🔵 Blue (Low):</strong> Values in the bottom 33% of range</li>
+                      <li><strong>🟢 Green (Mid):</strong> Values in the middle 33% of range</li>
+                      <li><strong>🔴 Red (High):</strong> Values in the top 33% of range</li>
+                    </ul>
+                    <p className="mt-2 text-xs">Colors are normalized across all values in the current dataset for consistent comparison.</p>
+                  </div>
+                } isDarkMode={isDarkMode} />
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(0, 100, 255)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Low ({globalMin.toFixed(2)})</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(0, 255, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Mid</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(255, 0, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>High ({globalMax.toFixed(2)})</span>
+              </div>
+            </div>
+            <InfoTooltip id="heatmap-info" content={heatmapInfo.content} isDarkMode={isDarkMode} />
+          </div>
+          
+          {/* Dimension headers */}
+          <div className="flex items-center space-x-1 text-xs">
+            <div className="flex items-center">
+            <div className={`w-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Row</div>
+              <InfoTooltip id="rows-explanation" content={
                 <div>
-                  <p className="font-semibold mb-2">🎨 Color Scale</p>
-                  <p className="mb-2">Visual encoding of vector values using color intensity:</p>
+                  <p className="font-semibold mb-2">📋 Rows</p>
+                  <p className="mb-2">Each row represents one trading period (candle):</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li><strong>🔵 Blue (Low):</strong> Values in the bottom 33% of range</li>
-                    <li><strong>🟢 Green (Mid):</strong> Values in the middle 33% of range</li>
-                    <li><strong>🔴 Red (High):</strong> Values in the top 33% of range</li>
+                    <li><strong>Row #1:</strong> Most recent period (if sorted newest first)</li>
+                    <li><strong>Order:</strong> Depends on your sort setting in Data Dashboard</li>
+                    <li><strong>Data:</strong> Each row contains OHLC(V) data for that time period</li>
+                    <li><strong>Hover:</strong> Click any cell to see exact timestamp and values</li>
                   </ul>
-                  <p className="mt-2 text-xs">Colors are normalized across all values in the current dataset for consistent comparison.</p>
                 </div>
               } isDarkMode={isDarkMode} />
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(0, 100, 255)' }}></div>
-              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Low ({globalMin.toFixed(2)})</span>
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(0, 255, 0)' }}></div>
-              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Mid</span>
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(255, 0, 0)' }}></div>
-              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>High ({globalMax.toFixed(2)})</span>
-            </div>
-          </div>
-          <InfoTooltip id="heatmap-info" content={heatmapInfo.content} isDarkMode={isDarkMode} />
-        </div>
-        
-        {/* Dimension headers */}
-        <div className="flex items-center space-x-1 text-xs">
-          <div className="flex items-center">
-            <div className={`w-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Row</div>
-            <InfoTooltip id="rows-explanation" content={
-              <div>
-                <p className="font-semibold mb-2">📋 Rows</p>
-                <p className="mb-2">Each row represents one trading period (candle):</p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Row #1:</strong> Most recent period (if sorted newest first)</li>
-                  <li><strong>Order:</strong> Depends on your sort setting in Data Dashboard</li>
-                  <li><strong>Data:</strong> Each row contains OHLC(V) data for that time period</li>
-                  <li><strong>Hover:</strong> Click any cell to see exact timestamp and values</li>
-                </ul>
-              </div>
-            } isDarkMode={isDarkMode} />
-          </div>
-          <div className="flex items-center space-x-0.5">
+            <div className="flex items-center space-x-0.5">
             <div className="flex space-x-0.5">
               {Array.from({ length: maxDimensions }, (_, i) => (
                 <div key={i} className={`w-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   D{i}
                 </div>
               ))}
-            </div>
-            <InfoTooltip id="dimensions" content={
-              <div>
-                <p className="font-semibold mb-2">📊 Vector Dimensions</p>
-                <p className="mb-2">Each column represents a dimension of your trading vector:</p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Raw OHLC:</strong> D0=Open, D1=High, D2=Low, D3=Close</li>
-                  <li><strong>Raw OHLCV:</strong> D0=Open, D1=High, D2=Low, D3=Close, D4=Volume</li>
-                  <li><strong>Normalized:</strong> Same mapping but z-score scaled</li>
-                  <li><strong>BERT:</strong> D0-D383 are semantic feature dimensions</li>
-                </ul>
-                <p className="mt-2 text-xs">Hover over any cell to see exact values. Each dimension captures different aspects of market behavior.</p>
               </div>
-            } isDarkMode={isDarkMode} />
+              <InfoTooltip id="dimensions" content={
+                <div>
+                  <p className="font-semibold mb-2">📊 Vector Dimensions</p>
+                  <p className="mb-2">Each column represents a dimension of your trading vector:</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li><strong>Raw OHLC:</strong> D0=Open, D1=High, D2=Low, D3=Close</li>
+                    <li><strong>Raw OHLCV:</strong> D0=Open, D1=High, D2=Low, D3=Close, D4=Volume</li>
+                    <li><strong>Normalized:</strong> Same mapping but z-score scaled</li>
+                    <li><strong>BERT:</strong> D0-D383 are semantic feature dimensions</li>
+                  </ul>
+                  <p className="mt-2 text-xs">Hover over any cell to see exact values. Each dimension captures different aspects of market behavior.</p>
+                </div>
+              } isDarkMode={isDarkMode} />
+            </div>
+          </div>
+          
+          {/* Vector heatmap */}
+          <div className="space-y-1">
+            {vectors.map((vector, rowIndex) => (
+              <div key={rowIndex} className="flex items-center space-x-1">
+                <div className={`w-12 text-xs font-mono ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  #{rowIndex + 1}
+                </div>
+                <div className="flex space-x-0.5">
+                  {vector.slice(0, maxDimensions).map((value, dimIndex) => {
+                    const color = getColorFromValue(value, globalMin, globalMax);
+                    return (
+                      <div
+                        key={dimIndex}
+                        className="w-8 h-8 rounded-sm border border-gray-300 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: color }}
+                        title={`Row ${rowIndex + 1}, Dim ${dimIndex}: ${value.toFixed(4)}\nRange: ${globalMin.toFixed(2)} to ${globalMax.toFixed(2)}`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {vectors.length === 20 && vectorData.data.length > 20 && (
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} text-center mt-2`}>
+              Showing first 20 of {vectorData.data.length} vectors
+            </div>
+          )}
+        </div>
+      );
+    } catch (error) {
+      console.error('Error rendering vector heatmap:', error);
+      return (
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode 
+            ? 'bg-red-900/20 border-red-800 text-red-300' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="text-sm font-medium">Error rendering heatmap</div>
+          <div className="text-xs mt-1">
+            {error.message || 'An unknown error occurred while rendering the vector heatmap'}
+          </div>
+          <div className="text-xs mt-2 opacity-75">
+            This often happens with very large vector datasets. Try reducing the vector limit or using a simpler vector type.
           </div>
         </div>
-        
-        {/* Vector heatmap */}
-        <div className="space-y-1">
-          {vectors.map((vector, rowIndex) => (
-            <div key={rowIndex} className="flex items-center space-x-1">
-              <div className={`w-12 text-xs font-mono ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                #{rowIndex + 1}
-              </div>
-              <div className="flex space-x-0.5">
-                {vector.slice(0, maxDimensions).map((value, dimIndex) => {
-                  const color = getColorFromValue(value, globalMin, globalMax);
-                  return (
-                    <div
-                      key={dimIndex}
-                      className="w-8 h-8 rounded-sm border border-gray-300 cursor-pointer hover:scale-110 transition-transform"
-                      style={{ backgroundColor: color }}
-                      title={`Row ${rowIndex + 1}, Dim ${dimIndex}: ${value.toFixed(4)}\nRange: ${globalMin.toFixed(2)} to ${globalMax.toFixed(2)}`}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        {vectors.length === 20 && vectorData.data.length > 20 && (
-          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} text-center mt-2`}>
-            Showing first 20 of {vectorData.data.length} vectors
-          </div>
-        )}
-      </div>
-    );
+      );
+    }
   };
 
   const [compareIndices, setCompareIndices] = useState([0, 1]);
-  const [activeTooltip, setActiveTooltip] = useState(null);
-
-  // Tooltip component for reusability
-  const InfoTooltip = ({ id, content, isDarkMode }) => {
-    const isActive = activeTooltip === id;
-    
-    return (
-      <div className="relative">
-        <button
-          onClick={() => setActiveTooltip(isActive ? null : id)}
-          onMouseEnter={() => setActiveTooltip(id)}
-          onMouseLeave={() => setActiveTooltip(null)}
-          className={`ml-2 w-4 h-4 rounded-full border text-xs font-bold transition-all duration-200 ${
-            isDarkMode 
-              ? 'border-gray-500 text-gray-400 hover:border-blue-400 hover:text-blue-400' 
-              : 'border-gray-400 text-gray-500 hover:border-blue-500 hover:text-blue-600'
-          }`}
-        >
-          i
-        </button>
-        {isActive && (
-          <div className={`absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 rounded-lg shadow-lg border transition-colors duration-200 ${
-            isDarkMode 
-              ? 'bg-gray-800 border-gray-600 text-gray-200' 
-              : 'bg-white border-gray-200 text-gray-800'
-          }`}>
-            <div className="text-sm leading-relaxed">{content}</div>
-            {/* Arrow pointing down */}
-            <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[8px] border-l-transparent border-r-transparent ${
-              isDarkMode ? 'border-t-gray-800' : 'border-t-white'
-            }`}></div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // Vector statistics explanations
   const vectorStatsInfo = {
@@ -421,9 +502,9 @@ const TradingVectorDashboard = ({
         {/* Comparison Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <h4 className={`text-sm font-semibold ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>Vector Comparison</h4>
+          <h4 className={`text-sm font-semibold ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>Vector Comparison</h4>
             <InfoTooltip id="vector-comparison" content={
               <div>
                 <p className="font-semibold mb-2">⚖️ Vector Comparison</p>
@@ -470,15 +551,15 @@ const TradingVectorDashboard = ({
               </select>
             </div>
             <div className="flex items-center">
-              <div className={`text-sm px-3 py-1 rounded transition-colors duration-200 ${
-                similarity > 0.8 
-                  ? isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800'
-                  : similarity > 0.6 
-                  ? isDarkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
-                  : isDarkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800'
-              }`}>
-                Similarity: {(similarity * 100).toFixed(1)}%
-              </div>
+            <div className={`text-sm px-3 py-1 rounded transition-colors duration-200 ${
+              similarity > 0.8 
+                ? isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800'
+                : similarity > 0.6 
+                ? isDarkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
+                : isDarkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800'
+            }`}>
+              Similarity: {(similarity * 100).toFixed(1)}%
+            </div>
               <InfoTooltip id="similarity-score" content={
                 <div>
                   <p className="font-semibold mb-2">📈 Similarity Score</p>
@@ -571,8 +652,8 @@ const TradingVectorDashboard = ({
         }`}>
           <div className="flex items-center mb-2">
             <h5 className={`text-sm font-medium ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>Similarity Analysis</h5>
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>Similarity Analysis</h5>
             <InfoTooltip id="similarity-analysis" content={
               <div>
                 <p className="font-semibold mb-2">🔍 Vector Similarity</p>
@@ -621,57 +702,85 @@ const TradingVectorDashboard = ({
   const renderVectorStats = () => {
     if (!vectorData?.data) return null;
 
-    const vectors = vectorData.data.map(row => row[selectedVectorType]).filter(v => v);
-    const stats = getVectorStats(vectors);
+    try {
+      const vectors = vectorData.data.map(row => row[selectedVectorType]).filter(v => v);
+      if (vectors.length === 0) {
+        return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No vector data available for {selectedVectorType}</div>;
+      }
 
-    if (!stats) return <div className="text-gray-500">No vector statistics available</div>;
+      const stats = getVectorStats(vectors);
+      if (!stats) return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No vector statistics available</div>;
+    
+      // Add some validation for the stats
+      if (typeof stats.min !== 'number' || typeof stats.max !== 'number' || 
+          typeof stats.avg !== 'number' || typeof stats.std !== 'number') {
+        return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Invalid vector statistics calculated</div>;
+      }
 
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Vector Count
-            <InfoTooltip id="vector-count" content={vectorStatsInfo.count.content} isDarkMode={isDarkMode} />
+      return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+          }`}>
+            <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Vector Count
+              <InfoTooltip id="vector-count" content={vectorStatsInfo.count.content} isDarkMode={isDarkMode} />
+            </div>
+            <div className="text-2xl font-bold text-blue-500">{stats.count}</div>
           </div>
-          <div className="text-2xl font-bold text-blue-500">{stats.count}</div>
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+          }`}>
+            <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Dimensions
+              <InfoTooltip id="vector-dimensions" content={vectorStatsInfo.dimensions.content} isDarkMode={isDarkMode} />
+            </div>
+            <div className="text-2xl font-bold text-green-500">{stats.dimensions}</div>
+          </div>
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+          }`}>
+            <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Range
+              <InfoTooltip id="vector-range" content={vectorStatsInfo.range.content} isDarkMode={isDarkMode} />
+            </div>
+            <div className="text-sm font-bold text-purple-500">
+              {stats.min.toFixed(3)} to {stats.max.toFixed(3)}
+            </div>
+          </div>
+          <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+          }`}>
+            <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Std Dev
+              <InfoTooltip id="vector-std" content={vectorStatsInfo.std.content} isDarkMode={isDarkMode} />
+            </div>
+            <div className="text-2xl font-bold text-orange-500">{stats.std.toFixed(4)}</div>
+          </div>
         </div>
+      );
+    } catch (error) {
+      console.error('Error rendering vector stats:', error);
+      return (
         <div className={`p-4 rounded-lg border transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+          isDarkMode 
+            ? 'bg-red-900/20 border-red-800 text-red-300' 
+            : 'bg-red-50 border-red-200 text-red-800'
         }`}>
-          <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Dimensions
-            <InfoTooltip id="vector-dimensions" content={vectorStatsInfo.dimensions.content} isDarkMode={isDarkMode} />
+          <div className="text-sm font-medium">Error calculating vector statistics</div>
+          <div className="text-xs mt-1">
+            {error.message || 'An unknown error occurred while processing vector data'}
           </div>
-          <div className="text-2xl font-bold text-green-500">{stats.dimensions}</div>
-        </div>
-        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Range
-            <InfoTooltip id="vector-range" content={vectorStatsInfo.range.content} isDarkMode={isDarkMode} />
-          </div>
-          <div className="text-sm font-bold text-purple-500">
-            {stats.min.toFixed(3)} to {stats.max.toFixed(3)}
+          <div className="text-xs mt-2 opacity-75">
+            This may happen with very large vectors (like BERT embeddings). Try reducing the vector limit or switching to a different vector type.
           </div>
         </div>
-        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`flex items-center text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Std Dev
-            <InfoTooltip id="vector-std" content={vectorStatsInfo.std.content} isDarkMode={isDarkMode} />
-          </div>
-          <div className="text-2xl font-bold text-orange-500">{stats.std.toFixed(4)}</div>
-        </div>
-      </div>
-    );
+      );
+    }
   };
 
   if (loading) {
-    return (
+      return (
       <div className="flex items-center justify-center h-64">
         <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${
           isDarkMode ? 'border-blue-400' : 'border-blue-600'
@@ -713,7 +822,7 @@ const TradingVectorDashboard = ({
             : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
         }`}>
           <div className="flex items-center">
-            <h2 className="text-2xl font-bold mb-2">Trading Vector Dashboard</h2>
+          <h2 className="text-2xl font-bold mb-2">Trading Vector Dashboard</h2>
             <InfoTooltip id="vector-dashboard" content={
               <div>
                 <p className="font-semibold mb-2">🧠 Vector Dashboard Overview</p>
@@ -810,10 +919,10 @@ const TradingVectorDashboard = ({
             <div>
               <div className="flex items-center mb-2">
                 <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Vector Limit
-                </label>
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Vector Limit
+              </label>
                 <InfoTooltip id="vector-limit" content={
                   <div>
                     <p className="font-semibold mb-2">⚡ Vector Limit</p>
@@ -847,10 +956,10 @@ const TradingVectorDashboard = ({
             <div>
               <div className="flex items-center mb-2">
                 <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Data Info
-                </label>
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Data Info
+              </label>
                 <InfoTooltip id="data-info" content={
                   <div>
                     <p className="font-semibold mb-2">📊 Data Information</p>
@@ -881,8 +990,8 @@ const TradingVectorDashboard = ({
       }`}>
         <div className="flex items-center mb-4">
           <h3 className={`text-lg font-semibold ${
-            isDarkMode ? 'text-white' : 'text-gray-900'
-          }`}>Vector Type Selection</h3>
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>Vector Type Selection</h3>
           <InfoTooltip id="vector-types" content={
             <div>
               <p className="font-semibold mb-2">🧠 Vector Types Explained</p>
@@ -904,11 +1013,11 @@ const TradingVectorDashboard = ({
             isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
           }`}>
             <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <span className="text-green-500 font-medium">✅ Available: {availableVectors.length}</span>
-                {missingVectors.length > 0 && (
-                  <span className="text-orange-500 font-medium ml-4">⚠️ Missing: {missingVectors.length}</span>
-                )}
+            <div className="text-sm">
+              <span className="text-green-500 font-medium">✅ Available: {availableVectors.length}</span>
+              {missingVectors.length > 0 && (
+                <span className="text-orange-500 font-medium ml-4">⚠️ Missing: {missingVectors.length}</span>
+              )}
               </div>
               <InfoTooltip id="vector-status" content={
                 <div>
@@ -964,9 +1073,9 @@ const TradingVectorDashboard = ({
               isDarkMode ? 'border-gray-600' : 'border-gray-200'
             }`}>
               <div className="flex items-center justify-center">
-                <h4 className={`text-lg font-semibold ${
-                  isDarkMode ? 'text-blue-300' : 'text-blue-700'
-                }`}>📊 Without Volume</h4>
+              <h4 className={`text-lg font-semibold ${
+                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+              }`}>📊 Without Volume</h4>
                 <InfoTooltip id="without-volume" content={
                   <div>
                     <p className="font-semibold mb-2">📊 OHLC Vectors (Without Volume)</p>
@@ -991,35 +1100,35 @@ const TradingVectorDashboard = ({
                 
                 return (
                   <div key={type.key} className="relative">
-                    <button
-                      onClick={() => isAvailable && setSelectedVectorType(type.key)}
-                      disabled={!isAvailable}
-                      className={`w-full p-3 rounded-lg border text-left transition-all duration-200 ${
-                        selectedVectorType === type.key 
-                          ? isDarkMode
-                            ? 'border-blue-400 bg-blue-900/30 ring-2 ring-blue-400/50 text-white'
-                            : 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                          : isAvailable
-                          ? isDarkMode
-                            ? 'border-gray-600 hover:border-gray-500 hover:bg-gray-700 text-white'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          : isDarkMode
-                            ? 'border-gray-700 bg-gray-800 opacity-60 cursor-not-allowed text-gray-500'
-                            : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
-                      }`}
-                    >
+                  <button
+                    onClick={() => isAvailable && setSelectedVectorType(type.key)}
+                    disabled={!isAvailable}
+                    className={`w-full p-3 rounded-lg border text-left transition-all duration-200 ${
+                      selectedVectorType === type.key 
+                        ? isDarkMode
+                          ? 'border-blue-400 bg-blue-900/30 ring-2 ring-blue-400/50 text-white'
+                          : 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                        : isAvailable
+                        ? isDarkMode
+                          ? 'border-gray-600 hover:border-gray-500 hover:bg-gray-700 text-white'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        : isDarkMode
+                          ? 'border-gray-700 bg-gray-800 opacity-60 cursor-not-allowed text-gray-500'
+                          : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                    }`}
+                  >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${type.color} ${!isAvailable ? 'opacity-50' : ''}`}></div>
-                          <div className={`font-medium text-sm ${
-                            !isAvailable 
-                              ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                              : isDarkMode ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            {type.name}
-                            {isAvailable && <span className="text-green-500 ml-1">✓</span>}
-                            {isMissing && <span className="text-orange-500 ml-1">⚠</span>}
-                          </div>
+                      <div className={`w-3 h-3 rounded-full ${type.color} ${!isAvailable ? 'opacity-50' : ''}`}></div>
+                      <div className={`font-medium text-sm ${
+                        !isAvailable 
+                          ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                          : isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {type.name}
+                        {isAvailable && <span className="text-green-500 ml-1">✓</span>}
+                        {isMissing && <span className="text-orange-500 ml-1">⚠</span>}
+                      </div>
                         </div>
                         {isAvailable && (
                           <InfoTooltip id={`vector-type-${type.key}`} content={
@@ -1051,18 +1160,18 @@ const TradingVectorDashboard = ({
                               </ul>
                               <p className="mt-2 text-xs">Click to select this vector type for analysis.</p>
                             </div>
-                          } isDarkMode={isDarkMode} />
+                          } isDarkMode={isDarkMode} asSpan={true} />
                         )}
-                      </div>
-                      <div className={`text-xs ${
-                        !isAvailable 
-                          ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                          : isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                      }`}>
-                        {type.description}
-                        {isMissing && <div className="text-orange-500 mt-1">Not available in database</div>}
-                      </div>
-                    </button>
+                    </div>
+                    <div className={`text-xs ${
+                      !isAvailable 
+                        ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        : isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
+                      {type.description}
+                      {isMissing && <div className="text-orange-500 mt-1">Not available in database</div>}
+                    </div>
+                  </button>
                   </div>
                 );
               })}
@@ -1075,9 +1184,9 @@ const TradingVectorDashboard = ({
               isDarkMode ? 'border-gray-600' : 'border-gray-200'
             }`}>
               <div className="flex items-center justify-center">
-                <h4 className={`text-lg font-semibold ${
-                  isDarkMode ? 'text-green-300' : 'text-green-700'
-                }`}>📈 With Volume</h4>
+              <h4 className={`text-lg font-semibold ${
+                isDarkMode ? 'text-green-300' : 'text-green-700'
+              }`}>📈 With Volume</h4>
                 <InfoTooltip id="with-volume" content={
                   <div>
                     <p className="font-semibold mb-2">📈 OHLCV Vectors (With Volume)</p>
@@ -1103,35 +1212,35 @@ const TradingVectorDashboard = ({
                 
                 return (
                   <div key={type.key} className="relative">
-                    <button
-                      onClick={() => isAvailable && setSelectedVectorType(type.key)}
-                      disabled={!isAvailable}
-                      className={`w-full p-3 rounded-lg border text-left transition-all duration-200 ${
-                        selectedVectorType === type.key 
-                          ? isDarkMode
-                            ? 'border-blue-400 bg-blue-900/30 ring-2 ring-blue-400/50 text-white'
-                            : 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                          : isAvailable
-                          ? isDarkMode
-                            ? 'border-gray-600 hover:border-gray-500 hover:bg-gray-700 text-white'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          : isDarkMode
-                            ? 'border-gray-700 bg-gray-800 opacity-60 cursor-not-allowed text-gray-500'
-                            : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
-                      }`}
-                    >
+                  <button
+                    onClick={() => isAvailable && setSelectedVectorType(type.key)}
+                    disabled={!isAvailable}
+                    className={`w-full p-3 rounded-lg border text-left transition-all duration-200 ${
+                      selectedVectorType === type.key 
+                        ? isDarkMode
+                          ? 'border-blue-400 bg-blue-900/30 ring-2 ring-blue-400/50 text-white'
+                          : 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                        : isAvailable
+                        ? isDarkMode
+                          ? 'border-gray-600 hover:border-gray-500 hover:bg-gray-700 text-white'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        : isDarkMode
+                          ? 'border-gray-700 bg-gray-800 opacity-60 cursor-not-allowed text-gray-500'
+                          : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                    }`}
+                  >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${type.color} ${!isAvailable ? 'opacity-50' : ''}`}></div>
-                          <div className={`font-medium text-sm ${
-                            !isAvailable 
-                              ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                              : isDarkMode ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            {type.name}
-                            {isAvailable && <span className="text-green-500 ml-1">✓</span>}
-                            {isMissing && <span className="text-orange-500 ml-1">⚠</span>}
-                          </div>
+                      <div className={`w-3 h-3 rounded-full ${type.color} ${!isAvailable ? 'opacity-50' : ''}`}></div>
+                      <div className={`font-medium text-sm ${
+                        !isAvailable 
+                          ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                          : isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {type.name}
+                        {isAvailable && <span className="text-green-500 ml-1">✓</span>}
+                        {isMissing && <span className="text-orange-500 ml-1">⚠</span>}
+                      </div>
                         </div>
                         {isAvailable && (
                           <InfoTooltip id={`vector-type-volume-${type.key}`} content={
@@ -1163,18 +1272,18 @@ const TradingVectorDashboard = ({
                               </ul>
                               <p className="mt-2 text-xs">Volume data adds depth for institutional analysis and market strength detection.</p>
                             </div>
-                          } isDarkMode={isDarkMode} />
+                          } isDarkMode={isDarkMode} asSpan={true} />
                         )}
-                      </div>
-                      <div className={`text-xs ${
-                        !isAvailable 
-                          ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                          : isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                      }`}>
-                        {type.description}
-                        {isMissing && <div className="text-orange-500 mt-1">Not available in database</div>}
-                      </div>
-                    </button>
+                    </div>
+                    <div className={`text-xs ${
+                      !isAvailable 
+                        ? isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        : isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
+                      {type.description}
+                      {isMissing && <div className="text-orange-500 mt-1">Not available in database</div>}
+                    </div>
+                  </button>
                   </div>
                 );
               })}
@@ -1221,9 +1330,9 @@ const TradingVectorDashboard = ({
       }`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
-            <h3 className={`text-lg font-semibold ${
-              isDarkMode ? 'text-white' : 'text-gray-900'
-            }`}>Vector Visualization</h3>
+          <h3 className={`text-lg font-semibold ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>Vector Visualization</h3>
             <InfoTooltip id="visualization-modes" content={
               <div>
                 <p className="font-semibold mb-2">👁️ Visualization Modes</p>
@@ -1886,14 +1995,14 @@ const TradingDashboard = () => {
         {/* Error Display */}
         {error && (
           <div className={`mb-6 rounded-lg p-4 border transition-colors duration-200 ${
-            isDarkMode 
-              ? 'bg-red-900/20 border-red-800 text-red-300' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
+          isDarkMode 
+            ? 'bg-red-900/20 border-red-800 text-red-300' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
             <div className="flex items-center">
               <div className="text-red-600 mr-2">⚠️</div>
               <div>{error}</div>
-            </div>
+          </div>
           </div>
         )}
 
@@ -2077,10 +2186,10 @@ const TradingDashboard = () => {
             <div>
               <div className="flex items-center mb-2">
                 <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Sort Order
-                </label>
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Sort Order
+              </label>
                 <InfoTooltip id="sort-order" content={
                   <div>
                     <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
@@ -2121,10 +2230,10 @@ const TradingDashboard = () => {
                 <div>
                   <div className="flex items-center mb-2">
                     <label className={`block text-sm font-medium ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      Search Data
-                    </label>
+                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                  }`}>
+                    Search Data
+                  </label>
                     <InfoTooltip id="search-functionality" content={
                       <div>
                         <p className="font-semibold mb-2">🔍 Search Features</p>
@@ -2265,16 +2374,16 @@ const TradingDashboard = () => {
                 )}
                 <br />
                 <div className="flex items-center">
-                  <span className={`text-sm font-medium ${sortOrder === 'asc' ? 'text-green-600' : 'text-blue-600'}`}>
-                    {sortOrder === 'asc' ? '🟢 Showing OLDEST data first' : '🔵 Showing NEWEST data first'} 
-                    {lastFetchInfo && (
-                      <span className={`ml-2 ${
-                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                      }`}>
-                        (Backend sorting: {lastFetchInfo.backendHandledSorting ? '✅' : '❌ using client-side fallback'})
-                      </span>
-                    )}
-                  </span>
+                <span className={`text-sm font-medium ${sortOrder === 'asc' ? 'text-green-600' : 'text-blue-600'}`}>
+                  {sortOrder === 'asc' ? '🟢 Showing OLDEST data first' : '🔵 Showing NEWEST data first'} 
+                  {lastFetchInfo && (
+                    <span className={`ml-2 ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}>
+                      (Backend sorting: {lastFetchInfo.backendHandledSorting ? '✅' : '❌ using client-side fallback'})
+                    </span>
+                  )}
+                </span>
                   <InfoTooltip id="data-order" content={
                     <div>
                       <p className="font-semibold mb-2">📊 Data Order & Quality</p>
@@ -2549,9 +2658,9 @@ const TradingDashboard = () => {
                                   <div className="flex items-center justify-center">
                                     <span className="text-gray-500 text-lg">➖</span>
                                     <span className="ml-1 text-xs text-gray-500 font-medium">DOJI</span>
-                                  </div>
-                                );
-                              }
+        </div>
+      );
+    }
                               return (
                                 <div className="flex items-center justify-center">
                                   <span className={`text-lg ${isGreen ? 'text-green-600' : 'text-red-600'}`}>
@@ -2608,9 +2717,9 @@ const TradingDashboard = () => {
               isDarkMode ? 'border-gray-700' : 'border-gray-200'
             }`}>
               <div className="flex items-center">
-                <h3 className={`text-lg font-semibold ${
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}>Available Tables</h3>
+              <h3 className={`text-lg font-semibold ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>Available Tables</h3>
                 <InfoTooltip id="available-tables" content={
                   <div>
                     <p className="font-semibold mb-2">📊 Database Tables</p>
