@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import TradingChartDashboard from './Chart.jsx';
 
 // Reusable InfoTooltip component
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -1411,7 +1412,7 @@ const TradingDashboard = () => {
   const [error, setError] = useState(null);
   
   // Dashboard mode toggle state
-  const [dashboardMode, setDashboardMode] = useState('data'); // 'data' or 'vector'
+  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', or 'chart'
   
   // Theme management
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -1987,6 +1988,21 @@ const TradingDashboard = () => {
                   <span>🧠</span>
                   <span>Vector Dashboard</span>
                 </button>
+                <button
+                  onClick={() => setDashboardMode('chart')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
+                    dashboardMode === 'chart'
+                      ? isDarkMode
+                        ? 'bg-gray-700 text-green-400 shadow-sm ring-1 ring-green-500/50'
+                        : 'bg-white text-green-600 shadow-sm ring-1 ring-green-200'
+                      : isDarkMode
+                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>📈</span>
+                  <span>Chart Dashboard</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2009,6 +2025,17 @@ const TradingDashboard = () => {
         {/* Conditional Dashboard Rendering */}
         {dashboardMode === 'vector' ? (
           <TradingVectorDashboard
+            selectedSymbol={selectedSymbol}
+            selectedTimeframe={selectedTimeframe}
+            setSelectedSymbol={setSelectedSymbol}
+            setSelectedTimeframe={setSelectedTimeframe}
+            rowLimit={rowLimit}
+            setRowLimit={setRowLimit}
+            tables={tables}
+            isDarkMode={isDarkMode}
+          />
+        ) : dashboardMode === 'chart' ? (
+          <TradingChartDashboard
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedTimeframe}
             setSelectedSymbol={setSelectedSymbol}
