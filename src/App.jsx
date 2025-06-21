@@ -34,7 +34,12 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center space-x-4">
-                <h1 className="text-xl font-bold">Trading Dashboard</h1>
+                <h1 className="text-xl font-black tracking-tight" style={{ 
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          letterSpacing: '-0.02em'
+        }}>
+          Day<span className="text-blue-600">gent</span>
+        </h1>
                 
                 {/* Architecture Mode Toggle */}
                 <div className={`flex items-center space-x-2 px-3 py-1 rounded-lg transition-colors duration-200 ${

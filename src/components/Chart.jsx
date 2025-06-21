@@ -521,14 +521,20 @@ const TradingChartDashboard = ({
 
   return (
     <div className="space-y-6">
-      {/* Chart Dashboard Header */}
-      <div className={`p-6 rounded-lg transition-colors duration-200 ${
-        isDarkMode 
-          ? 'bg-gradient-to-r from-green-800 via-green-700 to-blue-800 text-white' 
-          : 'bg-gradient-to-r from-green-600 to-blue-600 text-white'
-      }`}>
-        <div className="flex items-center">
-          <h2 className="text-2xl font-bold mb-2">Trading Chart Dashboard</h2>
+              {/* Chart Dashboard Header */}
+        <div className={`p-6 rounded-lg transition-colors duration-200 ${
+          isDarkMode 
+            ? 'bg-gradient-to-r from-green-800 via-green-700 to-blue-800 text-white' 
+            : 'bg-gradient-to-r from-green-600 to-blue-600 text-white'
+        }`}>
+          <div className="flex items-center">
+            <h2 className="text-3xl font-black tracking-tight mb-2" style={{ 
+              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+              letterSpacing: '-0.02em',
+              textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            }}>
+              Day<span className="text-green-200">gent</span> <span className="text-xl font-semibold text-green-100">Chart Analysis</span>
+            </h2>
           <InfoTooltip id="chart-dashboard" content={
             <div>
               <p className="font-semibold mb-2">📈 Chart Dashboard Overview</p>
@@ -543,9 +549,9 @@ const TradingChartDashboard = ({
             </div>
           } isDarkMode={isDarkMode} />
         </div>
-        <p className={isDarkMode ? 'text-green-200' : 'text-green-100'}>
-          Interactive price charts and technical analysis tools
-        </p>
+                  <p className={isDarkMode ? 'text-green-200' : 'text-green-100'}>
+            Interactive charting & technical analysis • Professional trading tools
+          </p>
         <div className={`mt-4 text-sm rounded p-2 ${
           isDarkMode ? 'bg-black/30' : 'bg-white/20'
         }`}>

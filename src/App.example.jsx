@@ -12,7 +12,7 @@ import VectorDashboard from './components/vector-dashboard/VectorDashboard';
 
 /**
  * Main Application Component
- * Orchestrates the Trading Dashboard with modular architecture
+ * Orchestrates the Daygent Trading Platform with modular architecture
  */
 function App() {
   const { isDarkMode, toggleTheme } = useTheme();

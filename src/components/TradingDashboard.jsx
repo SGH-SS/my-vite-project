@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import TradingChartDashboard from './Chart.jsx';
+import TradingLLMDashboard from './LLMDashboard.jsx';
 import { useTrading } from '../context/TradingContext';
 
 // Reusable InfoTooltip component
@@ -1215,7 +1216,13 @@ const TradingVectorDashboard = ({
             : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
         }`}>
           <div className="flex items-center">
-          <h2 className="text-2xl font-bold mb-2">Trading Vector Dashboard</h2>
+          <h2 className="text-3xl font-black tracking-tight mb-2" style={{ 
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            letterSpacing: '-0.02em',
+            textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          }}>
+            Day<span className="text-purple-200">gent</span> <span className="text-xl font-semibold text-purple-100">Vector Intelligence</span>
+          </h2>
             <InfoTooltip id="vector-dashboard" content={
               <div>
                 <p className="font-semibold mb-2">🧠 Vector Dashboard Overview</p>
@@ -1231,7 +1238,7 @@ const TradingVectorDashboard = ({
             } isDarkMode={isDarkMode} />
           </div>
           <p className={isDarkMode ? 'text-purple-200' : 'text-purple-100'}>
-            Analyze ML embeddings and vector representations of your trading data
+            Advanced pattern recognition & ML analysis • AI-powered market intelligence
           </p>
           <div className={`mt-4 text-sm rounded p-2 ${
             isDarkMode ? 'bg-black/30' : 'bg-white/20'
@@ -1699,7 +1706,7 @@ const TradingDashboard = () => {
   } = useTrading();
 
   // Dashboard mode is local to each tab (not shared)
-  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', or 'chart'
+  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', or 'llm'
 
   // Local state that doesn't need to be shared across tabs
   const [stats, setStats] = useState(null);
@@ -2208,19 +2215,43 @@ const TradingDashboard = () => {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className={`text-4xl font-bold mb-2 transition-colors duration-200 ${
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }`}>
-                {dashboardMode === 'data' ? 'Trading Data Dashboard' : 'Trading Vector Dashboard'}
-              </h1>
-              <p className={`transition-colors duration-200 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-600'
-              }`}>
-                {dashboardMode === 'data' 
-                  ? 'Real-time access to your PostgreSQL trading database • pgAdmin but better'
-                  : 'ML vector analysis and pattern recognition • AI-powered insights'
-                }
-              </p>
+              <div className="flex items-center mb-2">
+                <h1 className={`text-5xl font-black tracking-tight transition-colors duration-200 ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`} style={{ 
+                  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                  letterSpacing: '-0.02em',
+                  textShadow: isDarkMode ? '0 2px 4px rgba(0,0,0,0.5)' : '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                  Day<span className={`${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>gent</span>
+                </h1>
+                <div className={`ml-4 px-3 py-1 rounded-lg text-sm font-semibold transition-colors duration-200 ${
+                  dashboardMode === 'data' ? 
+                    isDarkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700' :
+                  dashboardMode === 'vector' ? 
+                    isDarkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700' :
+                  dashboardMode === 'chart' ? 
+                    isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700' :
+                    isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700'
+                }`}>
+                  {dashboardMode === 'data' ? 'Data Analytics' : 
+                   dashboardMode === 'vector' ? 'Vector Intelligence' : 
+                   dashboardMode === 'chart' ? 'Chart Analysis' :
+                   'AI Assistant'}
+                </div>
+              </div>
+                              <p className={`text-lg transition-colors duration-200 ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                }`}>
+                  {dashboardMode === 'data' 
+                    ? 'Professional trading database management • Real-time market data access'
+                    : dashboardMode === 'vector' 
+                    ? 'Advanced pattern recognition & ML analysis • AI-powered market insights'
+                    : dashboardMode === 'chart'
+                    ? 'Interactive charting & technical analysis • Professional trading tools'
+                    : 'Intelligent trading assistant • Natural language market analysis'
+                  }
+                </p>
             </div>
             
             {/* Professional Dashboard Toggle and Theme Toggle */}
@@ -2287,6 +2318,21 @@ const TradingDashboard = () => {
                   <span>📈</span>
                   <span>Chart Dashboard</span>
                 </button>
+                <button
+                  onClick={() => setDashboardMode('llm')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
+                    dashboardMode === 'llm'
+                      ? isDarkMode
+                        ? 'bg-gray-700 text-orange-400 shadow-sm ring-1 ring-orange-500/50'
+                        : 'bg-white text-orange-600 shadow-sm ring-1 ring-orange-200'
+                      : isDarkMode
+                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>🤖</span>
+                  <span>LLM Dashboard</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2308,12 +2354,17 @@ const TradingDashboard = () => {
 
         {/* Conditional Dashboard Rendering */}
         {dashboardMode === 'vector' ? (
-                  <TradingVectorDashboard
-          tables={tables}
-          isDarkMode={isDarkMode}
-        />
+          <TradingVectorDashboard
+            tables={tables}
+            isDarkMode={isDarkMode}
+          />
         ) : dashboardMode === 'chart' ? (
           <TradingChartDashboard
+            tables={tables}
+            isDarkMode={isDarkMode}
+          />
+        ) : dashboardMode === 'llm' ? (
+          <TradingLLMDashboard
             tables={tables}
             isDarkMode={isDarkMode}
           />

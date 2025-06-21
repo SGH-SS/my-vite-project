@@ -10,7 +10,7 @@ const STORAGE_KEY = 'tradingDashboard-state';
 
 /**
  * Trading Context Provider
- * Manages shared state across the trading dashboard with localStorage persistence and cross-tab sync
+ * Manages shared state across the Daygent trading platform with localStorage persistence and cross-tab sync
  */
 export const TradingProvider = ({ children }) => {
   // Initialize state from localStorage or defaults
