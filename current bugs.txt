@@ -1,4 +1,34 @@
-- havent tested csv export
+- Candle selection functionality (select candles for further analysis)
+
+Data Dashboard :
+{
+    - When selecting a candle I should be able to click anywhere on the candle not just the box on the left
+
+} 
+
+Vector Dashboard :
+{
+    - Cant select candles
+    - Candles are numbered and hard to diffrentiate, numbered #1-#20?
+    - Can only load 20 candles at a time, not able to change 
+    - Clicking on a box in the vector visualization heatmap does not give more info on that box
+
+} 
+
+Chart Dashboard :
+{
+    - no select candle ability
+
+} 
+
+LLM Dashboard :
+{
+    - llm itself has jackall backend  <-- llamaindex / LangChain layer --> (put hf model ontop of the vectors nigga) & (put gpt/claude api ontop of vecotrs)
+    - clean up front end once backend is more solid
+
+} 
+
+
 - need to perfect this trading dashboard with features ai suggests, implements, and perfects
 - look at new cursor additions (background, bugbot, tiktok saved, etc)
 
