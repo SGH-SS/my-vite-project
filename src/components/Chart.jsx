@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 // Import lightweight-charts v5.0 - install with: npm install lightweight-charts
 import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType } from 'lightweight-charts';
+import { useTrading } from '../context/TradingContext';
 
-// Reusable InfoTooltip component (copied from TradingDashboard for now)
+// Reusable InfoTooltip component (shared across dashboards)
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
   const [activeTooltip, setActiveTooltip] = useState(null);
   const isActive = activeTooltip === id;
@@ -44,16 +45,178 @@ const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
   );
 };
 
+// Reusable Data Selection & Controls component (shared across all dashboards)
+const DataSelectionControls = ({ 
+  handleRefresh, 
+  isDarkMode,
+  dashboardType = 'chart'
+}) => {
+  // Use shared trading context
+  const {
+    selectedSymbol,
+    setSelectedSymbol,
+    selectedTimeframe,
+    setSelectedTimeframe,
+    rowLimit,
+    setRowLimit
+  } = useTrading();
+  return (
+    <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
+      isDarkMode ? 'bg-gray-800' : 'bg-white'
+    }`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className={`text-lg font-semibold ${
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>Data Selection & Controls</h3>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRefresh}
+            className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+              isDarkMode 
+                ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' 
+                : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+            }`}
+          >
+            🔄 Refresh {dashboardType === 'chart' ? 'Chart' : dashboardType === 'vector' ? 'Vectors' : 'Data'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Symbol
+          </label>
+          <select
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="es">ES (E-mini S&P 500)</option>
+            <option value="eurusd">EURUSD (Euro/US Dollar)</option>
+            <option value="spy">SPY (SPDR S&P 500 ETF)</option>
+          </select>
+        </div>
+        
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Timeframe
+          </label>
+          <select
+            value={selectedTimeframe}
+            onChange={(e) => setSelectedTimeframe(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="1m">1 Minute</option>
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="4h">4 Hours</option>
+            <option value="1d">1 Day</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            {dashboardType === 'vector' ? 'Vector Limit' : dashboardType === 'chart' ? 'Data Limit' : 'Rows per page'}
+          </label>
+          <select
+            value={rowLimit}
+            onChange={(e) => setRowLimit(Number(e.target.value))}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            {dashboardType === 'chart' ? (
+              <>
+                <option value={100}>100 candles</option>
+                <option value={250}>250 candles</option>
+                <option value={500}>500 candles</option>
+                <option value={1000}>1000 candles</option>
+                <option value={2000}>2000 candles</option>
+              </>
+            ) : (
+              <>
+                <option value={25}>25 rows</option>
+                <option value={50}>50 rows</option>
+                <option value={100}>100 rows</option>
+                <option value={250}>250 rows</option>
+                <option value={500}>500 rows</option>
+              </>
+            )}
+          </select>
+        </div>
+
+        <div>
+          <div className="flex items-center mb-2">
+            <label className={`block text-sm font-medium ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Chart Info
+            </label>
+            <InfoTooltip id="chart-info" content={
+              <div>
+                <p className="font-semibold mb-2">📈 Chart Information</p>
+                <p className="mb-2">Current chart data status:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Candles:</strong> Number of price periods displayed</li>
+                  <li><strong>Real-time:</strong> Updates when you change symbol or timeframe</li>
+                  <li><strong>Interactive:</strong> Zoom, pan, and hover for details</li>
+                </ul>
+                <p className="mt-2 text-xs">More candles provide better technical analysis context.</p>
+              </div>
+            } isDarkMode={isDarkMode} />
+          </div>
+          <div className={`px-3 py-2 rounded-md text-sm font-mono ${
+            isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {rowLimit} candles
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TradingChartDashboard = ({ 
-  selectedSymbol, 
-  selectedTimeframe, 
-  setSelectedSymbol, 
-  setSelectedTimeframe,
-  rowLimit,
-  setRowLimit,
   tables,
   isDarkMode 
 }) => {
+  // Use shared trading context
+  const {
+    selectedSymbol,
+    setSelectedSymbol,
+    selectedTimeframe,
+    setSelectedTimeframe,
+    rowLimit,
+    setRowLimit
+  } = useTrading();
+
+  // Debug: Log when context values change (can be removed in production)
+  useEffect(() => {
+    console.log('🔄 Chart Dashboard - Trading context changed:', {
+      selectedSymbol,
+      selectedTimeframe,
+      rowLimit
+    });
+  }, [selectedSymbol, selectedTimeframe, rowLimit]);
   const [chartData, setChartData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -66,14 +229,37 @@ const TradingChartDashboard = ({
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
+      console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, timeRange); // Debug log
       fetchChartData();
     }
   }, [selectedSymbol, selectedTimeframe, rowLimit, timeRange]);
 
-  // Reinitialize chart when theme changes
+  // Initialize chart when data changes - FIXED: Ensures chart updates when symbol/timeframe changes
   useEffect(() => {
-    if (chartData?.data) {
-      initializeChart(chartData.data);
+    if (chartData?.data && chartData.data.length > 0 && !loading) {
+      console.log('📊 Chart initialization triggered by data change'); // Debug log
+      // Small delay to ensure container is ready
+      setTimeout(() => {
+        initializeChart(chartData.data);
+      }, 100);
+    } else if (!chartData && !loading) {
+      // Clear chart when no data
+      if (chartRef.current) {
+        console.log('🧹 Clearing chart due to no data'); // Debug log
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+    }
+  }, [chartData, loading]);
+
+  // Reinitialize chart when theme changes or chart type changes
+  useEffect(() => {
+    if (chartData?.data && chartData.data.length > 0 && !loading) {
+      console.log('🎨 Chart reinitialize triggered by theme/type change');
+      // Small delay to ensure container is ready
+      setTimeout(() => {
+        initializeChart(chartData.data);
+      }, 100);
     }
   }, [isDarkMode, chartType]);
 
@@ -89,6 +275,11 @@ const TradingChartDashboard = ({
 
   const fetchChartData = async () => {
     setLoading(true);
+    setError(null);
+    
+    // Clear existing chart data while loading
+    setChartData(null);
+    
     try {
       let limit = rowLimit;
       
@@ -119,13 +310,11 @@ const TradingChartDashboard = ({
       }
       
       const data = await response.json();
+      console.log('📊 Chart data fetched successfully:', data.data?.length, 'candles');
       setChartData(data);
       setError(null);
       
-      // Initialize chart after data is loaded
-      if (data.data && data.data.length > 0) {
-        initializeChart(data.data);
-      }
+      // Chart will be initialized by the useEffect that watches chartData
     } catch (err) {
       setError(`Failed to fetch chart data: ${err.message}`);
     } finally {
@@ -134,19 +323,36 @@ const TradingChartDashboard = ({
   };
 
   const initializeChart = (data) => {
-    if (!chartContainerRef.current || !data || data.length === 0) return;
+    if (!chartContainerRef.current || !data || data.length === 0) {
+      console.warn('⚠️ Cannot initialize chart - missing container or data');
+      return;
+    }
+
+    console.log('🎯 Initializing chart with', data.length, 'candles');
 
     // Clear any existing chart
     if (chartRef.current) {
+      console.log('🧹 Cleaning up existing chart');
       chartRef.current.remove();
       chartRef.current = null;
     }
 
+    // Clear the container
+    if (chartContainerRef.current) {
+      chartContainerRef.current.innerHTML = '';
+    }
+
     try {
+      // Ensure container has dimensions
+      const containerWidth = chartContainerRef.current.clientWidth || 800;
+      const containerHeight = 400;
+      
+      console.log('📐 Container dimensions:', { width: containerWidth, height: containerHeight });
+      
       // Create the chart using v5.0 API
       const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: 400,
+        width: containerWidth,
+        height: containerHeight,
         layout: {
           background: { type: ColorType.Solid, color: isDarkMode ? '#1f2937' : '#ffffff' },
           textColor: isDarkMode ? '#e5e7eb' : '#374151',
@@ -212,7 +418,11 @@ const TradingChartDashboard = ({
 
       // Handle resize
       const handleResize = () => {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+        if (chartContainerRef.current) {
+          const newWidth = chartContainerRef.current.clientWidth || 800;
+          console.log('📏 Resizing chart to width:', newWidth);
+          chart.applyOptions({ width: newWidth });
+        }
       };
 
       window.addEventListener('resize', handleResize);
@@ -226,7 +436,7 @@ const TradingChartDashboard = ({
       console.log('🎉 Interactive chart created successfully:', data.length, 'candles');
       
     } catch (error) {
-      console.error('Error initializing chart:', error);
+      console.error('❌ Error initializing chart:', error);
     }
   };
 
@@ -343,75 +553,24 @@ const TradingChartDashboard = ({
         </div>
       </div>
 
-      {/* Data Selection & Controls */}
+      {/* Data Selection & Controls - Using Consistent Component */}
+      <DataSelectionControls
+        handleRefresh={fetchChartData}
+        isDarkMode={isDarkMode}
+        dashboardType="chart"
+      />
+
+      {/* Chart-Specific Controls */}
       <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
         isDarkMode ? 'bg-gray-800' : 'bg-white'
       }`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className={`text-lg font-semibold ${
             isDarkMode ? 'text-white' : 'text-gray-900'
-          }`}>Chart Data Selection & Controls</h3>
-          <div className="flex gap-2">
-            <button
-              onClick={fetchChartData}
-              className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                isDarkMode 
-                  ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' 
-                  : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
-              }`}
-            >
-              🔄 Refresh Chart
-            </button>
-          </div>
+          }`}>Chart Configuration</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              Symbol
-            </label>
-            <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                isDarkMode 
-                  ? 'border-gray-600 bg-gray-700 text-white' 
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
-            >
-              <option value="es">ES (E-mini S&P 500)</option>
-              <option value="eurusd">EURUSD (Euro/US Dollar)</option>
-              <option value="spy">SPY (SPDR S&P 500 ETF)</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              Timeframe
-            </label>
-            <select
-              value={selectedTimeframe}
-              onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                isDarkMode 
-                  ? 'border-gray-600 bg-gray-700 text-white' 
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
-            >
-              <option value="1m">1 Minute</option>
-              <option value="5m">5 Minutes</option>
-              <option value="15m">15 Minutes</option>
-              <option value="30m">30 Minutes</option>
-              <option value="1h">1 Hour</option>
-              <option value="4h">4 Hours</option>
-              <option value="1d">1 Day</option>
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           <div>
             <label className={`block text-sm font-medium mb-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
@@ -453,29 +612,6 @@ const TradingChartDashboard = ({
               <option value="candlestick">🕯️ Candlestick</option>
               <option value="line">📈 Line Chart</option>
               <option value="area">📊 Area Chart</option>
-            </select>
-          </div>
-
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              Data Limit
-            </label>
-            <select
-              value={rowLimit}
-              onChange={(e) => setRowLimit(Number(e.target.value))}
-              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                isDarkMode 
-                  ? 'border-gray-600 bg-gray-700 text-white' 
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
-            >
-              <option value={100}>100 candles</option>
-              <option value={250}>250 candles</option>
-              <option value={500}>500 candles</option>
-              <option value={1000}>1000 candles</option>
-              <option value={2000}>2000 candles</option>
             </select>
           </div>
         </div>
@@ -605,6 +741,7 @@ const TradingChartDashboard = ({
                 ? 'border-gray-600 bg-gray-900' 
                 : 'border-gray-200 bg-gray-50'
             }`}
+            style={{ minHeight: '400px', position: 'relative' }}
           >
             {/* Chart is rendered programmatically via lightweight-charts */}
           </div>

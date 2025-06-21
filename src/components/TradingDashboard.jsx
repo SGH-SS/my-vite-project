@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import TradingChartDashboard from './Chart.jsx';
+import { useTrading } from '../context/TradingContext';
 
 // Reusable InfoTooltip component
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -43,22 +44,413 @@ const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
   );
 };
 
+// Reusable Data Selection & Controls component
+const DataSelectionControls = ({ 
+  selectedSymbol, 
+  setSelectedSymbol, 
+  selectedTimeframe, 
+  setSelectedTimeframe, 
+  rowLimit, 
+  setRowLimit, 
+  sortOrder, 
+  setSortOrder, 
+  searchTerm, 
+  setSearchTerm, 
+  selectedSearchColumn, 
+  setSelectedSearchColumn, 
+  showColumnFilters, 
+  setShowColumnFilters, 
+  showDebugInfo, 
+  setShowDebugInfo, 
+  handleRefresh, 
+  lastFetchInfo, 
+  isDarkMode,
+  dashboardType = 'data' // 'data', 'vector', 'chart'
+}) => {
+
+
+  return (
+    <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
+      isDarkMode ? 'bg-gray-800' : 'bg-white'
+    }`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className={`text-lg font-semibold ${
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>Data Selection & Controls</h3>
+        <div className="flex gap-2">
+          {setShowColumnFilters && (
+            <button
+              onClick={() => setShowColumnFilters(!showColumnFilters)}
+              className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+                isDarkMode 
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                  : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              🔍 Filters {showColumnFilters ? '▼' : '▶'}
+            </button>
+          )}
+          <button
+            onClick={handleRefresh}
+            className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+              isDarkMode 
+                ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' 
+                : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+            }`}
+          >
+            🔄 Refresh {dashboardType === 'chart' ? 'Chart' : dashboardType === 'vector' ? 'Vectors' : 'Data'}
+          </button>
+          {setShowDebugInfo && (
+            <button
+              onClick={() => setShowDebugInfo(!showDebugInfo)}
+              className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+                isDarkMode 
+                  ? 'bg-yellow-800 hover:bg-yellow-700 text-yellow-300' 
+                  : 'bg-yellow-100 hover:bg-yellow-200 text-yellow-700'
+              }`}
+            >
+              🐛 Debug {showDebugInfo ? '▼' : '▶'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Symbol
+          </label>
+          <select
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="es">ES (E-mini S&P 500)</option>
+            <option value="eurusd">EURUSD (Euro/US Dollar)</option>
+            <option value="spy">SPY (SPDR S&P 500 ETF)</option>
+          </select>
+        </div>
+        
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Timeframe
+          </label>
+          <select
+            value={selectedTimeframe}
+            onChange={(e) => setSelectedTimeframe(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="1m">1 Minute</option>
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="4h">4 Hours</option>
+            <option value="1d">1 Day</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            {dashboardType === 'vector' ? 'Vector Limit' : dashboardType === 'chart' ? 'Data Limit' : 'Rows per page'}
+          </label>
+          <select
+            value={rowLimit}
+            onChange={(e) => setRowLimit(Number(e.target.value))}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            {dashboardType === 'vector' ? (
+              <>
+                <option value={25}>25 vectors</option>
+                <option value={50}>50 vectors</option>
+                <option value={100}>100 vectors</option>
+                <option value={250}>250 vectors</option>
+                <option value={500}>500 vectors</option>
+              </>
+            ) : dashboardType === 'chart' ? (
+              <>
+                <option value={100}>100 candles</option>
+                <option value={250}>250 candles</option>
+                <option value={500}>500 candles</option>
+                <option value={1000}>1000 candles</option>
+                <option value={2000}>2000 candles</option>
+              </>
+            ) : (
+              <>
+                <option value={25}>25 rows</option>
+                <option value={50}>50 rows</option>
+                <option value={100}>100 rows</option>
+                <option value={250}>250 rows</option>
+                <option value={500}>500 rows</option>
+              </>
+            )}
+          </select>
+        </div>
+
+        <div>
+          {sortOrder && setSortOrder ? (
+            <>
+              <div className="flex items-center mb-2">
+                <label className={`block text-sm font-medium ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  Sort Order
+                </label>
+                <InfoTooltip id="sort-order" content={
+                  <div>
+                    <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
+                      <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
+                    </ul>
+                    <p className="mt-2 text-xs"><strong>Note:</strong> Backend sorting quality is shown in debug info. Client-side fallback ensures proper ordering.</p>
+                  </div>
+                } isDarkMode={isDarkMode} />
+              </div>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-700 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value="desc">⬇ Descending (Newest first)</option>
+                <option value="asc">⬆ Ascending (Oldest first)</option>
+              </select>
+            </>
+          ) : dashboardType === 'vector' ? (
+            <>
+              <div className="flex items-center mb-2">
+                <label className={`block text-sm font-medium ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  Data Info
+                </label>
+                <InfoTooltip id="data-info" content={
+                  <div>
+                    <p className="font-semibold mb-2">📊 Data Information</p>
+                    <p className="mb-2">Current status of loaded vector data:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li><strong>Vectors Loaded:</strong> Number of trading periods currently in memory</li>
+                      <li><strong>Real-time:</strong> Updates when you change symbol, timeframe, or limit</li>
+                      <li><strong>Performance:</strong> More vectors = more analysis depth</li>
+                    </ul>
+                    <p className="mt-2 text-xs">This shows actual data availability for the selected symbol and timeframe.</p>
+                  </div>
+                } isDarkMode={isDarkMode} />
+              </div>
+              <div className={`px-3 py-2 rounded-md text-sm font-mono ${
+                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
+              }`}>
+                {rowLimit} vectors loaded
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center mb-2">
+                <label className={`block text-sm font-medium ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  Chart Info
+                </label>
+                <InfoTooltip id="chart-info" content={
+                  <div>
+                    <p className="font-semibold mb-2">📈 Chart Information</p>
+                    <p className="mb-2">Current chart data status:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li><strong>Candles:</strong> Number of price periods displayed</li>
+                      <li><strong>Real-time:</strong> Updates when you change symbol or timeframe</li>
+                      <li><strong>Interactive:</strong> Zoom, pan, and hover for details</li>
+                    </ul>
+                    <p className="mt-2 text-xs">More candles provide better technical analysis context.</p>
+                  </div>
+                } isDarkMode={isDarkMode} />
+              </div>
+              <div className={`px-3 py-2 rounded-md text-sm font-mono ${
+                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
+              }`}>
+                {rowLimit} candles
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Search and Advanced Controls */}
+      {showColumnFilters && setSearchTerm && setSelectedSearchColumn && (
+        <div className={`mt-4 pt-4 border-t rounded-md p-4 transition-colors duration-200 ${
+          isDarkMode 
+            ? 'border-gray-600 bg-gray-700' 
+            : 'border-gray-200 bg-gray-50'
+        }`}>
+          <h4 className={`text-md font-medium mb-3 ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>Advanced Filters & Controls</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <div className="flex items-center mb-2">
+                <label className={`block text-sm font-medium ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  Search Data
+                </label>
+                <InfoTooltip id="search-functionality" content={
+                  <div>
+                    <p className="font-semibold mb-2">🔍 Search Features</p>
+                    <p className="mb-2">Powerful search across your trading data:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li><strong>All Columns:</strong> Searches timestamps, prices, and volume</li>
+                      <li><strong>Specific Column:</strong> Target your search to one data type</li>
+                      <li><strong>Smart Formatting:</strong> Automatically handles price formatting</li>
+                      <li><strong>Real-time:</strong> Results update as you type</li>
+                    </ul>
+                    <p className="mt-2 text-xs"><strong>Tip:</strong> Remove commas from numbers for better search results.</p>
+                  </div>
+                } isDarkMode={isDarkMode} />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={selectedSearchColumn === 'all' ? 
+                  "Search in all columns..." : 
+                  `Search in ${selectedSearchColumn} column...`}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-800 text-white placeholder-gray-400' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              />
+            </div>
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Search Column
+              </label>
+              <select
+                value={selectedSearchColumn}
+                onChange={(e) => setSelectedSearchColumn(e.target.value)}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-800 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value="all">🔍 ALL COLUMNS</option>
+                <option value="timestamp">📅 Timestamp</option>
+                <option value="open">📈 Open Price</option>
+                <option value="high">🔺 High Price</option>
+                <option value="low">🔻 Low Price</option>
+                <option value="close">💰 Close Price</option>
+                <option value="volume">📊 Volume</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedSearchColumn('all');
+                  if (setSortOrder) setSortOrder('desc');
+                  if (setShowColumnFilters) setShowColumnFilters(false);
+                }}
+                className={`w-full px-3 py-2 text-sm rounded-md transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                }`}
+              >
+                🔄 Reset Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Information Panel */}
+      {showDebugInfo && lastFetchInfo && (
+        <div className={`mt-4 pt-4 border-t rounded-md p-4 transition-colors duration-200 ${
+          isDarkMode 
+            ? 'border-gray-600 bg-yellow-900/20' 
+            : 'border-gray-200 bg-yellow-50'
+        }`}>
+          <h4 className={`text-md font-medium mb-3 ${
+            isDarkMode ? 'text-yellow-300' : 'text-yellow-800'
+          }`}>🐛 Debug Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p><strong>Last Fetch:</strong> {lastFetchInfo.timestamp}</p>
+              <p><strong>Requested Data:</strong> <span className={lastFetchInfo.requestedData === 'OLDEST' ? 'text-green-600' : 'text-blue-600'}>{lastFetchInfo.requestedData}</span> {lastFetchInfo.rowLimit} records</p>
+              <p><strong>Page:</strong> {lastFetchInfo.currentPage} (offset: {lastFetchInfo.offset})</p>
+              <p><strong>Sort:</strong> {lastFetchInfo.sortOrder} by {lastFetchInfo.sortColumn}</p>
+              <p><strong>Data Quality:</strong> <span className={lastFetchInfo.dataQuality?.includes('GOOD') ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.dataQuality}</span></p>
+            </div>
+            <div>
+              <p><strong>Backend Sorting:</strong> <span className={lastFetchInfo.backendHandledSorting ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.backendHandledSorting ? '✅ Working' : '❌ Not Working'}</span></p>
+              <p><strong>Total Records:</strong> {lastFetchInfo.totalRecords?.toLocaleString() || 'Unknown'}</p>
+              {lastFetchInfo.actualDataRange && (
+                <>
+                  <p><strong>Data Span:</strong> {lastFetchInfo.actualDataRange.span}</p>
+                  <p><strong>First Record:</strong> {new Date(lastFetchInfo.actualDataRange.first).toLocaleString()}</p>
+                  <p><strong>Last Record:</strong> {new Date(lastFetchInfo.actualDataRange.last).toLocaleString()}</p>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 p-2 bg-yellow-100 rounded text-xs">
+            <strong>💡 Tip:</strong> If "Data Quality" shows "POOR" for ascending order, your backend may only be returning recent data. 
+            For true oldest records, you may need to modify your backend API to support historical data access.
+          </div>
+          <div className="mt-2 text-xs text-gray-600 break-all">
+            <strong>API URL:</strong> {lastFetchInfo.apiUrl}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Import the new Vector Dashboard component
 const TradingVectorDashboard = ({ 
-  selectedSymbol, 
-  selectedTimeframe, 
-  setSelectedSymbol, 
-  setSelectedTimeframe,
-  rowLimit,
-  setRowLimit,
   tables,
   isDarkMode 
 }) => {
+  // Use shared trading context
+  const {
+    selectedSymbol,
+    setSelectedSymbol,
+    selectedTimeframe,
+    setSelectedTimeframe,
+    rowLimit,
+    setRowLimit,
+    selectedVectorType,
+    setSelectedVectorType,
+    vectorViewMode,
+    setVectorViewMode
+  } = useTrading();
   const [vectorData, setVectorData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedVectorType, setSelectedVectorType] = useState('raw_ohlc_vec');
-  const [viewMode, setViewMode] = useState('heatmap'); // heatmap, scatter, comparison
   const [selectedRows, setSelectedRows] = useState([]);
   const [availableVectors, setAvailableVectors] = useState([]);
   const [missingVectors, setMissingVectors] = useState([]);
@@ -848,140 +1240,18 @@ const TradingVectorDashboard = ({
           </div>
         </div>
 
-        {/* Data Selection & Controls */}
-        <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        }`}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className={`text-lg font-semibold ${
-              isDarkMode ? 'text-white' : 'text-gray-900'
-            }`}>Vector Data Selection & Controls</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={fetchVectorData}
-                className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                  isDarkMode 
-                    ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' 
-                    : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
-                }`}
-              >
-                🔄 Refresh Vectors
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Symbol
-              </label>
-              <select
-                value={selectedSymbol}
-                onChange={(e) => setSelectedSymbol(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="es">ES (E-mini S&P 500)</option>
-                <option value="eurusd">EURUSD (Euro/US Dollar)</option>
-                <option value="spy">SPY (SPDR S&P 500 ETF)</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Timeframe
-              </label>
-              <select
-                value={selectedTimeframe}
-                onChange={(e) => setSelectedTimeframe(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="1m">1 Minute</option>
-                <option value="5m">5 Minutes</option>
-                <option value="15m">15 Minutes</option>
-                <option value="30m">30 Minutes</option>
-                <option value="1h">1 Hour</option>
-                <option value="4h">4 Hours</option>
-                <option value="1d">1 Day</option>
-              </select>
-            </div>
-
-            <div>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Vector Limit
-              </label>
-                <InfoTooltip id="vector-limit" content={
-                  <div>
-                    <p className="font-semibold mb-2">⚡ Vector Limit</p>
-                    <p className="mb-2">Number of trading periods to load and analyze:</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>25-50:</strong> Fast loading, good for quick analysis</li>
-                      <li><strong>100-250:</strong> Balanced performance and data coverage</li>
-                      <li><strong>500+:</strong> Comprehensive analysis, slower loading</li>
-                    </ul>
-                    <p className="mt-2 text-xs">More vectors provide better pattern analysis but require more processing time and memory.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
-              </div>
-              <select
-                value={rowLimit}
-                onChange={(e) => setRowLimit(Number(e.target.value))}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value={25}>25 vectors</option>
-                <option value={50}>50 vectors</option>
-                <option value={100}>100 vectors</option>
-                <option value={250}>250 vectors</option>
-                <option value={500}>500 vectors</option>
-              </select>
-            </div>
-
-            <div>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Data Info
-              </label>
-                <InfoTooltip id="data-info" content={
-                  <div>
-                    <p className="font-semibold mb-2">📊 Data Information</p>
-                    <p className="mb-2">Current status of loaded vector data:</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>Vectors Loaded:</strong> Number of trading periods currently in memory</li>
-                      <li><strong>Real-time:</strong> Updates when you change symbol, timeframe, or limit</li>
-                      <li><strong>Performance:</strong> More vectors = more analysis depth</li>
-                    </ul>
-                    <p className="mt-2 text-xs">This shows actual data availability for the selected symbol and timeframe.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
-              </div>
-              <div className={`px-3 py-2 rounded-md text-sm font-mono ${
-                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-              }`}>
-                {vectorData?.data?.length || 0} vectors loaded
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Data Selection & Controls - Using Consistent Component */}
+        <DataSelectionControls 
+          selectedSymbol={selectedSymbol}
+          setSelectedSymbol={setSelectedSymbol}
+          selectedTimeframe={selectedTimeframe}
+          setSelectedTimeframe={setSelectedTimeframe}
+          rowLimit={rowLimit}
+          setRowLimit={setRowLimit}
+          handleRefresh={fetchVectorData}
+          isDarkMode={isDarkMode}
+          dashboardType="vector"
+        />
 
       {/* Vector Type Selector */}
       <div className={`p-6 rounded-lg border transition-colors duration-200 ${
@@ -1350,9 +1620,9 @@ const TradingVectorDashboard = ({
             {['heatmap', 'comparison'].map(mode => (
               <button
                 key={mode}
-                onClick={() => setViewMode(mode)}
+                onClick={() => setVectorViewMode(mode)}
                 className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
-                  viewMode === mode 
+                  vectorViewMode === mode 
                     ? isDarkMode
                       ? 'bg-blue-600 text-white' 
                       : 'bg-blue-600 text-white'
@@ -1368,8 +1638,8 @@ const TradingVectorDashboard = ({
         </div>
 
         <div className="min-h-64">
-          {viewMode === 'heatmap' && renderVectorHeatmap()}
-          {viewMode === 'comparison' && renderVectorComparison()}
+          {vectorViewMode === 'heatmap' && renderVectorHeatmap()}
+          {vectorViewMode === 'comparison' && renderVectorComparison()}
         </div>
       </div>
 
@@ -1403,18 +1673,44 @@ const TradingVectorDashboard = ({
 };
 
 const TradingDashboard = () => {
+  // Use shared trading context for data settings
+  const {
+    selectedSymbol,
+    setSelectedSymbol,
+    selectedTimeframe,
+    setSelectedTimeframe,
+    rowLimit,
+    setRowLimit,
+    sortOrder,
+    setSortOrder,
+    sortColumn,
+    setSortColumn,
+    currentPage,
+    setCurrentPage,
+    searchTerm,
+    setSearchTerm,
+    selectedSearchColumn,
+    setSelectedSearchColumn,
+    showColumnFilters,
+    setShowColumnFilters,
+    showDebugInfo,
+    setShowDebugInfo,
+    resetFilters
+  } = useTrading();
+
+  // Dashboard mode is local to each tab (not shared)
+  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', or 'chart'
+
+  // Local state that doesn't need to be shared across tabs
   const [stats, setStats] = useState(null);
   const [tables, setTables] = useState([]);
-  const [selectedSymbol, setSelectedSymbol] = useState('es');
-  const [selectedTimeframe, setSelectedTimeframe] = useState('1d');
   const [tradingData, setTradingData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [lastFetchInfo, setLastFetchInfo] = useState(null);
   
-  // Dashboard mode toggle state
-  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', or 'chart'
-  
-  // Theme management
+  // Theme management (separate from trading state)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('tradingDashboard-theme');
     return saved ? saved === 'dark' : false;
@@ -1433,18 +1729,6 @@ const TradingDashboard = () => {
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
   };
-  
-  // New state for enhanced functionality
-  const [rowLimit, setRowLimit] = useState(50);
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [sortColumn, setSortColumn] = useState('timestamp');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSearchColumn, setSelectedSearchColumn] = useState('all');
-  const [selectedRows, setSelectedRows] = useState(new Set());
-  const [showColumnFilters, setShowColumnFilters] = useState(false);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
-  const [lastFetchInfo, setLastFetchInfo] = useState(null);
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
@@ -2024,24 +2308,12 @@ const TradingDashboard = () => {
 
         {/* Conditional Dashboard Rendering */}
         {dashboardMode === 'vector' ? (
-          <TradingVectorDashboard
-            selectedSymbol={selectedSymbol}
-            selectedTimeframe={selectedTimeframe}
-            setSelectedSymbol={setSelectedSymbol}
-            setSelectedTimeframe={setSelectedTimeframe}
-            rowLimit={rowLimit}
-            setRowLimit={setRowLimit}
-            tables={tables}
-            isDarkMode={isDarkMode}
-          />
+                  <TradingVectorDashboard
+          tables={tables}
+          isDarkMode={isDarkMode}
+        />
         ) : dashboardMode === 'chart' ? (
           <TradingChartDashboard
-            selectedSymbol={selectedSymbol}
-            selectedTimeframe={selectedTimeframe}
-            setSelectedSymbol={setSelectedSymbol}
-            setSelectedTimeframe={setSelectedTimeframe}
-            rowLimit={rowLimit}
-            setRowLimit={setRowLimit}
             tables={tables}
             isDarkMode={isDarkMode}
           />
@@ -2098,283 +2370,29 @@ const TradingDashboard = () => {
           </div>
         )}
 
-        {/* Enhanced Controls */}
-        <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        }`}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className={`text-lg font-semibold ${
-              isDarkMode ? 'text-white' : 'text-gray-900'
-            }`}>Data Selection & Controls</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowColumnFilters(!showColumnFilters)}
-                className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                  isDarkMode 
-                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                🔍 Filters {showColumnFilters ? '▼' : '▶'}
-              </button>
-              <button
-                onClick={handleRefresh}
-                className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                  isDarkMode 
-                    ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' 
-                    : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
-                }`}
-              >
-                🔄 Refresh
-              </button>
-              <button
-                onClick={() => setShowDebugInfo(!showDebugInfo)}
-                className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                  isDarkMode 
-                    ? 'bg-yellow-800 hover:bg-yellow-700 text-yellow-300' 
-                    : 'bg-yellow-100 hover:bg-yellow-200 text-yellow-700'
-                }`}
-              >
-                🐛 Debug {showDebugInfo ? '▼' : '▶'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Symbol
-              </label>
-              <select
-                value={selectedSymbol}
-                onChange={(e) => setSelectedSymbol(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="es">ES (E-mini S&P 500)</option>
-                <option value="eurusd">EURUSD (Euro/US Dollar)</option>
-                <option value="spy">SPY (SPDR S&P 500 ETF)</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Timeframe
-              </label>
-              <select
-                value={selectedTimeframe}
-                onChange={(e) => setSelectedTimeframe(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="1m">1 Minute</option>
-                <option value="5m">5 Minutes</option>
-                <option value="15m">15 Minutes</option>
-                <option value="30m">30 Minutes</option>
-                <option value="1h">1 Hour</option>
-                <option value="4h">4 Hours</option>
-                <option value="1d">1 Day</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Rows per page
-              </label>
-              <select
-                value={rowLimit}
-                onChange={(e) => setRowLimit(Number(e.target.value))}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value={25}>25 rows</option>
-                <option value={50}>50 rows</option>
-                <option value={100}>100 rows</option>
-                <option value={250}>250 rows</option>
-                <option value={500}>500 rows</option>
-              </select>
-            </div>
-
-            <div>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Sort Order
-              </label>
-                <InfoTooltip id="sort-order" content={
-                  <div>
-                    <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
-                      <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
-                    </ul>
-                    <p className="mt-2 text-xs"><strong>Note:</strong> Backend sorting quality is shown in debug info. Client-side fallback ensures proper ordering.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
-              </div>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="desc">⬇ Descending (Newest first)</option>
-                <option value="asc">⬆ Ascending (Oldest first)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Search and Advanced Controls */}
-          {showColumnFilters && (
-            <div className={`mt-4 pt-4 border-t rounded-md p-4 transition-colors duration-200 ${
-              isDarkMode 
-                ? 'border-gray-600 bg-gray-700' 
-                : 'border-gray-200 bg-gray-50'
-            }`}>
-              <h4 className={`text-md font-medium mb-3 ${
-                isDarkMode ? 'text-white' : 'text-gray-800'
-              }`}>Advanced Filters & Controls</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <div className="flex items-center mb-2">
-                    <label className={`block text-sm font-medium ${
-                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                  }`}>
-                    Search Data
-                  </label>
-                    <InfoTooltip id="search-functionality" content={
-                      <div>
-                        <p className="font-semibold mb-2">🔍 Search Features</p>
-                        <p className="mb-2">Powerful search across your trading data:</p>
-                        <ul className="list-disc list-inside space-y-1 text-xs">
-                          <li><strong>All Columns:</strong> Searches timestamps, prices, and volume</li>
-                          <li><strong>Specific Column:</strong> Target your search to one data type</li>
-                          <li><strong>Smart Formatting:</strong> Automatically handles price formatting</li>
-                          <li><strong>Real-time:</strong> Results update as you type</li>
-                        </ul>
-                        <p className="mt-2 text-xs"><strong>Tip:</strong> Remove commas from numbers for better search results.</p>
-                      </div>
-                    } isDarkMode={isDarkMode} />
-                  </div>
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder={selectedSearchColumn === 'all' ? 
-                      "Search in all columns..." : 
-                      `Search in ${selectedSearchColumn} column...`}
-                    className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                      isDarkMode 
-                        ? 'border-gray-600 bg-gray-800 text-white placeholder-gray-400' 
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${
-                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                  }`}>
-                    Search Column
-                  </label>
-                  <select
-                    value={selectedSearchColumn}
-                    onChange={(e) => setSelectedSearchColumn(e.target.value)}
-                    className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                      isDarkMode 
-                        ? 'border-gray-600 bg-gray-800 text-white' 
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
-                  >
-                    <option value="all">🔍 ALL COLUMNS</option>
-                    <option value="timestamp">📅 Timestamp</option>
-                    <option value="open">📈 Open Price</option>
-                    <option value="high">🔺 High Price</option>
-                    <option value="low">🔻 Low Price</option>
-                    <option value="close">💰 Close Price</option>
-                    <option value="volume">📊 Volume</option>
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setSelectedSearchColumn('all');
-                      setSortColumn('timestamp');
-                      setSortOrder('desc');
-                      setCurrentPage(1);
-                    }}
-                    className={`w-full px-3 py-2 text-sm rounded-md transition-colors duration-200 ${
-                      isDarkMode 
-                        ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
-                        : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                    }`}
-                  >
-                    🔄 Reset Filters
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Debug Information Panel */}
-          {showDebugInfo && lastFetchInfo && (
-            <div className={`mt-4 pt-4 border-t rounded-md p-4 transition-colors duration-200 ${
-              isDarkMode 
-                ? 'border-gray-600 bg-yellow-900/20' 
-                : 'border-gray-200 bg-yellow-50'
-            }`}>
-              <h4 className={`text-md font-medium mb-3 ${
-                isDarkMode ? 'text-yellow-300' : 'text-yellow-800'
-              }`}>🐛 Debug Information</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p><strong>Last Fetch:</strong> {lastFetchInfo.timestamp}</p>
-                  <p><strong>Requested Data:</strong> <span className={lastFetchInfo.requestedData === 'OLDEST' ? 'text-green-600' : 'text-blue-600'}>{lastFetchInfo.requestedData}</span> {lastFetchInfo.rowLimit} records</p>
-                  <p><strong>Page:</strong> {lastFetchInfo.currentPage} (offset: {lastFetchInfo.offset})</p>
-                  <p><strong>Sort:</strong> {lastFetchInfo.sortOrder} by {lastFetchInfo.sortColumn}</p>
-                  <p><strong>Data Quality:</strong> <span className={lastFetchInfo.dataQuality?.includes('GOOD') ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.dataQuality}</span></p>
-                </div>
-                <div>
-                  <p><strong>Backend Sorting:</strong> <span className={lastFetchInfo.backendHandledSorting ? 'text-green-600' : 'text-red-600'}>{lastFetchInfo.backendHandledSorting ? '✅ Working' : '❌ Not Working'}</span></p>
-                  <p><strong>Total Records:</strong> {lastFetchInfo.totalRecords?.toLocaleString() || 'Unknown'}</p>
-                  {lastFetchInfo.actualDataRange && (
-                    <>
-                      <p><strong>Data Span:</strong> {lastFetchInfo.actualDataRange.span}</p>
-                      <p><strong>First Record:</strong> {new Date(lastFetchInfo.actualDataRange.first).toLocaleString()}</p>
-                      <p><strong>Last Record:</strong> {new Date(lastFetchInfo.actualDataRange.last).toLocaleString()}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3 p-2 bg-yellow-100 rounded text-xs">
-                <strong>💡 Tip:</strong> If "Data Quality" shows "POOR" for ascending order, your backend may only be returning recent data. 
-                For true oldest records, you may need to modify your backend API to support historical data access.
-              </div>
-              <div className="mt-2 text-xs text-gray-600 break-all">
-                <strong>API URL:</strong> {lastFetchInfo.apiUrl}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Data Selection & Controls - Using Consistent Component */}
+        <DataSelectionControls 
+          selectedSymbol={selectedSymbol}
+          setSelectedSymbol={setSelectedSymbol}
+          selectedTimeframe={selectedTimeframe}
+          setSelectedTimeframe={setSelectedTimeframe}
+          rowLimit={rowLimit}
+          setRowLimit={setRowLimit}
+          sortOrder={sortOrder}
+          setSortOrder={setSortOrder}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          selectedSearchColumn={selectedSearchColumn}
+          setSelectedSearchColumn={setSelectedSearchColumn}
+          showColumnFilters={showColumnFilters}
+          setShowColumnFilters={setShowColumnFilters}
+          showDebugInfo={showDebugInfo}
+          setShowDebugInfo={setShowDebugInfo}
+          handleRefresh={handleRefresh}
+          lastFetchInfo={lastFetchInfo}
+          isDarkMode={isDarkMode}
+          dashboardType="data"
+        />
 
         {/* Trading Data Table */}
         <div className={`rounded-lg shadow-md overflow-hidden transition-colors duration-200 ${

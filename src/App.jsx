@@ -20,7 +20,7 @@ import OriginalTradingDashboard from './components/TradingDashboard';
 function App() {
   const { isDarkMode, toggleTheme } = useTheme();
   const [dashboardMode, setDashboardMode] = useState(DASHBOARD_MODES.DATA);
-  const [architectureMode, setArchitectureMode] = useState('modular'); // 'modular' or 'monolithic'
+  const [architectureMode, setArchitectureMode] = useState('monolithic'); // 'modular' or 'monolithic'
 
   return (
     <TradingProvider>
