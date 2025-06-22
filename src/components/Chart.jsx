@@ -236,6 +236,8 @@ const TradingChartDashboard = ({
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const selectionOverlayRef = useRef(null);
+  const priceSeriesRef = useRef(null);
+  const chartDataRef = useRef(null); // Store original chart data
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
@@ -279,11 +281,37 @@ const TradingChartDashboard = ({
   useEffect(() => {
     return () => {
       if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
+              chartRef.current.remove();
+      chartRef.current = null;
+      priceSeriesRef.current = null;
       }
     };
   }, []);
+
+  // Update chart highlights when selected candles change
+  useEffect(() => {
+    // Add a small delay to ensure chart is fully initialized
+    const timeoutId = setTimeout(() => {
+      if (chartRef.current && priceSeriesRef.current && chartDataRef.current) {
+        console.log('🔄 Selection changed, updating chart highlights...');
+        updateChartHighlights();
+      } else {
+        console.log('🔄 Selection changed but chart not ready yet, skipping highlight update');
+      }
+    }, 50);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedCandles, selectedSymbol, selectedTimeframe]);
+
+  // Also update highlights when chart data is initially loaded
+  useEffect(() => {
+    if (chartRef.current && priceSeriesRef.current && chartDataRef.current && selectedCandles.length > 0) {
+      console.log('🔄 Chart data loaded, applying existing selections...');
+      setTimeout(() => {
+        updateChartHighlights();
+      }, 150);
+    }
+  }, [chartData]);
 
   // Handle global mouse events for selection
   useEffect(() => {
@@ -306,12 +334,82 @@ const TradingChartDashboard = ({
     }
   }, [isSelectionMode, isDragging]);
 
+  const updateChartHighlights = () => {
+    console.log('🔍 updateChartHighlights called', {
+      hasChart: !!chartRef.current,
+      hasPriceSeries: !!priceSeriesRef.current,
+      hasOriginalData: !!chartDataRef.current,
+      originalDataLength: chartDataRef.current?.length || 0,
+      selectedCandlesCount: selectedCandles.length,
+      selectedSymbol,
+      selectedTimeframe
+    });
+
+    if (!chartRef.current || !priceSeriesRef.current || !chartDataRef.current) {
+      console.log('⚠️ Missing dependencies for chart highlights:', {
+        hasChart: !!chartRef.current,
+        hasPriceSeries: !!priceSeriesRef.current,
+        hasOriginalData: !!chartDataRef.current,
+        originalDataLength: chartDataRef.current?.length || 0
+      });
+      return;
+    }
+
+    try {
+      // Get selected candles for current symbol/timeframe
+      const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+      );
+
+      console.log('🎯 Current selection for chart:', {
+        totalSelected: selectedCandles.length,
+        currentSymbolTimeframe: currentSymbolTimeframeSelection.length,
+        selectedCandles: currentSymbolTimeframeSelection.map(c => c.timestamp)
+      });
+
+      // Create highlighted candlestick data
+      const selectedTimestamps = new Set(currentSymbolTimeframeSelection.map(c => c.timestamp));
+      
+      const highlightedCandlestickData = chartDataRef.current.map(candle => {
+        const isSelected = selectedTimestamps.has(candle.timestamp);
+        const baseData = {
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        };
+
+        // If selected, add blue highlighting colors
+        if (isSelected) {
+          console.log('📍 Highlighting candle:', candle.timestamp);
+          return {
+            ...baseData,
+            color: '#3b82f6', // Blue for selected candles
+            wickColor: '#3b82f6' // Blue wick for selected candles
+          };
+        }
+
+        return baseData;
+      });
+
+      // Update the series data with highlighted candles
+      priceSeriesRef.current.setData(highlightedCandlestickData);
+      console.log(`✅ Updated chart with ${currentSymbolTimeframeSelection.length} highlighted candles`);
+
+    } catch (error) {
+      console.error('❌ Error updating chart highlights:', error);
+      console.error('Error details:', error.stack);
+    }
+  };
+
   const fetchChartData = async () => {
     setLoading(true);
     setError(null);
     
     // Clear existing chart data while loading
     setChartData(null);
+    // Note: We don't clear chartDataRef.current here because we might need it for highlighting
     
     try {
       let limit = rowLimit;
@@ -364,6 +462,12 @@ const TradingChartDashboard = ({
       setChartData(data);
       setError(null);
       
+      // Store chart data for highlighting before initialization
+      if (data.data && Array.isArray(data.data)) {
+        chartDataRef.current = data.data;
+        console.log('📊 Stored chart data for highlighting:', data.data.length, 'candles');
+      }
+      
       // Chart will be initialized by the useEffect that watches chartData
     } catch (err) {
       setError(`Failed to fetch chart data: ${err.message}`);
@@ -380,11 +484,19 @@ const TradingChartDashboard = ({
 
     console.log('🎯 Initializing chart with', data.length, 'candles');
 
+    // Ensure chart data is stored for highlighting (should already be set from fetchChartData)
+    if (!chartDataRef.current) {
+      chartDataRef.current = data;
+      console.log('📊 Storing chart data in initializeChart as fallback');
+    }
+
     // Clear any existing chart
     if (chartRef.current) {
       console.log('🧹 Cleaning up existing chart');
       chartRef.current.remove();
       chartRef.current = null;
+      priceSeriesRef.current = null;
+      // DON'T clear chartDataRef.current here - we need it for highlighting!
     }
 
     // Clear the container
@@ -426,14 +538,35 @@ const TradingChartDashboard = ({
 
       chartRef.current = chart;
 
-      // Prepare candlestick data
-      const candlestickData = data.map(candle => ({
-        time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-        open: parseFloat(candle.open),
-        high: parseFloat(candle.high),
-        low: parseFloat(candle.low),
-        close: parseFloat(candle.close),
-      }));
+      // Get selected candles for current symbol/timeframe for highlighting
+      const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+      );
+      const selectedTimestamps = new Set(currentSymbolTimeframeSelection.map(c => c.timestamp));
+
+      // Prepare candlestick data with highlighting
+      const candlestickData = data.map(candle => {
+        const isSelected = selectedTimestamps.has(candle.timestamp);
+        const baseData = {
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        };
+
+        // If selected, add blue highlighting colors
+        if (isSelected) {
+          console.log('📍 Highlighting selected candle:', candle.timestamp);
+          return {
+            ...baseData,
+            color: '#3b82f6', // Blue for selected candles
+            wickColor: '#3b82f6' // Blue wick for selected candles
+          };
+        }
+
+        return baseData;
+      });
 
       // Render the main price series based on selected chart type using v5.0 API
       let priceSeries;
@@ -463,8 +596,19 @@ const TradingChartDashboard = ({
         priceSeries.setData(candlestickData.map(d => ({ time: d.time, value: d.close })));
       }
 
+      // Store price series reference for highlighting
+      priceSeriesRef.current = priceSeries;
+
       // Auto-fit content
       chart.timeScale().fitContent();
+
+      // Update highlights for any existing selected candles
+      setTimeout(() => {
+        if (selectedCandles.length > 0) {
+          console.log('🎨 Applying highlights after chart initialization...');
+          updateChartHighlights();
+        }
+      }, 250);
 
       // Handle resize
       const handleResize = () => {
@@ -748,6 +892,16 @@ const TradingChartDashboard = ({
           isDarkMode ? 'bg-black/30' : 'bg-white/20'
         }`}>
           📈 {selectedSymbol?.toUpperCase()} • {selectedTimeframe} • {chartData?.data?.length || 0} candles loaded
+          {(() => {
+            const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+              c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+            );
+            return currentSymbolTimeframeSelection.length > 0 && (
+              <span className="ml-4 px-2 py-1 rounded text-xs bg-blue-600 text-white">
+                🔵 {currentSymbolTimeframeSelection.length} highlighted
+              </span>
+            );
+          })()}
         </div>
       </div>
 
@@ -764,194 +918,9 @@ const TradingChartDashboard = ({
         canSelectCandles={true}
       />
 
-      {/* Chart-Specific Controls */}
-      <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-semibold ${
-            isDarkMode ? 'text-white' : 'text-gray-900'
-          }`}>Chart Configuration</h3>
-          
-          {/* Selection Mode Toggle */}
-          <button
-            onClick={toggleSelectionMode}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-              isSelectionMode
-                ? isDarkMode
-                  ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-                  : 'bg-blue-600 text-white ring-2 ring-blue-300'
-                : isDarkMode
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
-            }`}
-          >
-            {isSelectionMode ? (
-              <>
-                <span>🎯</span>
-                <span>Selection Mode ON</span>
-              </>
-            ) : (
-              <>
-                <span>🕯️</span>
-                <span>Select Candles</span>
-              </>
-            )}
-          </button>
-        </div>
 
-        {/* Selection Instructions */}
-        {isSelectionMode && (
-          <div className={`mb-4 p-3 rounded-lg border transition-colors duration-200 ${
-            isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
-          }`}>
-            <div className="flex items-center mb-2">
-              <span className="text-lg mr-2">ℹ️</span>
-              <span className="font-medium">Selection Mode Active</span>
-            </div>
-            <div className="text-sm">
-              <p>• <strong>Click</strong> individual candles to select/deselect them</p>
-              <p>• <strong>Drag</strong> to create a rectangular selection (like Photoshop)</p>
-              <p>• Selected candles appear in the "Selected Candles" panel above</p>
-              <p>• Click "Selection Mode ON" to exit selection mode</p>
-            </div>
-          </div>
-        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              Time Range
-            </label>
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                isDarkMode 
-                  ? 'border-gray-600 bg-gray-700 text-white' 
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
-            >
-              <option value="all">All Data</option>
-              <option value="1d">Last 24 Hours</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-            </select>
-          </div>
 
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              Chart Type
-            </label>
-            <select
-              value={chartType}
-              onChange={(e) => setChartType(e.target.value)}
-              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                isDarkMode 
-                  ? 'border-gray-600 bg-gray-700 text-white' 
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
-            >
-              <option value="candlestick">🕯️ Candlestick</option>
-              <option value="line">📈 Line Chart</option>
-              <option value="area">📊 Area Chart</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Market Overview Cards */}
-      {latestCandle && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className={`rounded-lg shadow-md p-6 transition-colors duration-200 ${
-            isDarkMode ? 'bg-gray-800' : 'bg-white'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Current Price
-                </h3>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {formatPrice(latestCandle.close)}
-                </p>
-              </div>
-              <div className="text-3xl">💰</div>
-            </div>
-          </div>
-
-          <div className={`rounded-lg shadow-md p-6 transition-colors duration-200 ${
-            isDarkMode ? 'bg-gray-800' : 'bg-white'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  24h Change
-                </h3>
-                <p className={`text-2xl font-bold ${
-                  priceChange.change >= 0 ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {priceChange.change >= 0 ? '+' : ''}{formatPrice(priceChange.change)}
-                </p>
-                <p className={`text-sm ${
-                  priceChange.change >= 0 ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {priceChange.percent >= 0 ? '+' : ''}{priceChange.percent.toFixed(2)}%
-                </p>
-              </div>
-              <div className="text-3xl">
-                {priceChange.change >= 0 ? '📈' : '📉'}
-              </div>
-            </div>
-          </div>
-
-          {marketStats && (
-            <>
-              <div className={`rounded-lg shadow-md p-6 transition-colors duration-200 ${
-                isDarkMode ? 'bg-gray-800' : 'bg-white'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      24h High/Low
-                    </h3>
-                    <p className={`text-lg font-bold text-green-500`}>
-                      {formatPrice(marketStats.high24h)}
-                    </p>
-                    <p className={`text-lg font-bold text-red-500`}>
-                      {formatPrice(marketStats.low24h)}
-                    </p>
-                  </div>
-                  <div className="text-3xl">🎯</div>
-                </div>
-              </div>
-
-              <div className={`rounded-lg shadow-md p-6 transition-colors duration-200 ${
-                isDarkMode ? 'bg-gray-800' : 'bg-white'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Volume & Data
-                    </h3>
-                    <p className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {marketStats.volume24h.toLocaleString()}
-                    </p>
-                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {marketStats.dataPoints} candles
-                    </p>
-                  </div>
-                  <div className="text-3xl">📊</div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Chart Container */}
       <div className={`rounded-lg shadow-md transition-colors duration-200 ${
@@ -970,18 +939,90 @@ const TradingChartDashboard = ({
                 <p className="mb-2">Professional trading chart with the following features:</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
                   <li><strong>Candlestick View:</strong> OHLC data visualization</li>
+                  <li><strong>Line Chart:</strong> Clean price trend visualization</li>
+                  <li><strong>Area Chart:</strong> Volume-weighted visual representation</li>
                   <li><strong>Zoom & Pan:</strong> Navigate through time periods</li>
-                  <li><strong>Technical Indicators:</strong> Add moving averages and more</li>
                   <li><strong>Real-time Updates:</strong> Live data when available</li>
                 </ul>
-                <p className="mt-2 text-xs">Chart will be powered by lightweight-charts library for optimal performance.</p>
+                <p className="mt-2 text-xs">Chart powered by lightweight-charts library for optimal performance.</p>
               </div>
             } isDarkMode={isDarkMode} />
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Chart Type Selector */}
+            <div className="flex items-center gap-2">
+              <label className={`text-sm font-medium ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Chart Type:
+              </label>
+              <select
+                value={chartType}
+                onChange={(e) => setChartType(e.target.value)}
+                className={`px-3 py-1 text-sm rounded-md border transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-700 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value="candlestick">🕯️ Candlestick</option>
+                <option value="line">📈 Line Chart</option>
+                <option value="area">📊 Area Chart</option>
+              </select>
+            </div>
+
+            {/* Selection Mode Toggle */}
+            <button
+              onClick={toggleSelectionMode}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                isSelectionMode
+                  ? isDarkMode
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                    : 'bg-blue-600 text-white ring-2 ring-blue-300'
+                  : isDarkMode
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+              }`}
+            >
+              {isSelectionMode ? (
+                <>
+                  <span>🎯</span>
+                  <span>Selection Mode ON</span>
+                </>
+              ) : (
+                <>
+                  <span>🕯️</span>
+                  <span>Select Candles</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
         {/* Chart Area */}
         <div className="p-6">
+          {/* Selection Instructions */}
+          {isSelectionMode && (
+            <div className={`mb-4 p-3 rounded-lg border transition-colors duration-200 ${
+              isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+            }`}>
+              <div className="flex items-center mb-2">
+                <span className="text-lg mr-2">ℹ️</span>
+                <span className="font-medium">Selection Mode Active</span>
+              </div>
+              <div className="text-sm">
+                <p>• <strong>Click</strong> individual candles to select/deselect them</p>
+                <p>• <strong>Drag</strong> to create a rectangular selection (like Photoshop)</p>
+                <p>• <strong>Selected candles</strong> turn blue and move seamlessly with chart interactions</p>
+                <p>• Selected candles appear in the "Selected Candles" panel above</p>
+                <p>• Selection is synchronized across all dashboards</p>
+                <p>• Blue highlighting integrates with pan/zoom operations</p>
+                <p>• Click "Selection Mode ON" to exit selection mode</p>
+              </div>
+            </div>
+          )}
+          
           <div 
             ref={chartContainerRef}
             className={`w-full h-96 rounded border transition-colors duration-200 ${
@@ -992,6 +1033,8 @@ const TradingChartDashboard = ({
             style={{ minHeight: '400px', position: 'relative' }}
           >
             {/* Chart is rendered programmatically via lightweight-charts */}
+            
+            {/* Chart is rendered programmatically via lightweight-charts with integrated highlighting */}
             
             {/* Selection Overlay */}
             {isSelectionMode && (

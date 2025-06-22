@@ -1711,6 +1711,25 @@ const TradingDashboard = () => {
     setLocalSelectedIndices(new Set());
   }, [selectedSymbol, selectedTimeframe, currentPage]);
 
+  // Synchronize local selection indices with global selected candles
+  useEffect(() => {
+    if (!tradingData?.data) return;
+    
+    const newLocalIndices = new Set();
+    
+    // Check each row in current data to see if it's in global selection
+    tradingData.data.forEach((candle, index) => {
+      const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+      const isGloballySelected = selectedCandles.some(c => c.id === candleId);
+      
+      if (isGloballySelected) {
+        newLocalIndices.add(index);
+      }
+    });
+    
+    setLocalSelectedIndices(newLocalIndices);
+  }, [selectedCandles, tradingData?.data, selectedSymbol, selectedTimeframe]);
+
   const fetchStats = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/stats`);
@@ -2121,24 +2140,30 @@ const TradingDashboard = () => {
 
   const handleSelectAll = () => {
     const filteredData = getFilteredData();
-    const filteredIndices = getFilteredIndices();
+    
+    // Check if all filtered candles are currently selected
+    const allSelected = filteredData.every((candle) => {
+      const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+      return selectedCandles.some(c => c.id === candleId);
+    });
 
-    if (localSelectedIndices.size === filteredIndices.length && filteredIndices.length > 0) {
-      // Clear all selections
-      // Remove only candles from current page/filter
+    if (allSelected) {
+      // Deselect all filtered candles
       const currentPageCandleIds = filteredData.map(candle => 
         `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`
       );
       
-      // Remove current page candles from selection
+      // Remove current page candles from global selection
       currentPageCandleIds.forEach(id => removeSelectedCandle(id));
-      setLocalSelectedIndices(new Set());
     } else {
-      // Select all filtered candles
-      filteredData.forEach((candle, index) => {
+      // Select all filtered candles that aren't already selected
+      filteredData.forEach((candle, filteredIndex) => {
         const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
         
         if (!selectedCandles.some(c => c.id === candleId)) {
+          // Find the actual index in the full data array
+          const actualIndex = tradingData.data.indexOf(candle);
+          
           const candleWithMetadata = {
             id: candleId,
             symbol: selectedSymbol,
@@ -2151,15 +2176,15 @@ const TradingDashboard = () => {
             volume: candle.volume,
             change: candle.close - candle.open,
             changePercent: ((candle.close - candle.open) / candle.open) * 100,
-            sourceIndex: index
+            sourceIndex: actualIndex
           };
           
           addSelectedCandle(candleWithMetadata);
         }
       });
-      
-      setLocalSelectedIndices(new Set(filteredIndices));
     }
+    
+    // Note: localSelectedIndices will be updated automatically by the synchronization useEffect
   };
 
   const exportToCSV = () => {
@@ -2202,17 +2227,25 @@ const TradingDashboard = () => {
   };
 
   const handleBulkDelete = () => {
-    if (localSelectedIndices.size === 0) return;
+    const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+      c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+    );
     
-    if (confirm(`Are you sure you want to delete ${localSelectedIndices.size} selected candles?`)) {
+    if (currentSymbolTimeframeSelection.length === 0) return;
+    
+    if (confirm(`Are you sure you want to delete ${currentSymbolTimeframeSelection.length} selected candles?`)) {
       // TODO: Implement bulk delete API call
       alert('Bulk delete functionality would be implemented here');
-      setLocalSelectedIndices(new Set());
-      // Note: We keep the selectedCandles as they might be used in other dashboards
+      
+      // Clear the selected candles from global state
+      currentSymbolTimeframeSelection.forEach(candle => {
+        removeSelectedCandle(candle.id);
+      });
     }
   };
 
   const handleRefresh = () => {
+    // Clear only local selection state, global selection will be re-synchronized
     setLocalSelectedIndices(new Set());
     fetchTradingData();
   };
@@ -2223,6 +2256,12 @@ const TradingDashboard = () => {
   if (tradingData) {
     console.log(`📄 Pagination Debug - Total Count: ${tradingData.total_count}, Count: ${tradingData.count}, Data Length: ${tradingData.data?.length}, Row Limit: ${rowLimit}, Total Pages: ${totalPages}, Current Page: ${currentPage}`);
   }
+
+  // Helper function to check if a candle is selected globally
+  const isCandleSelected = (candle, index) => {
+    const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+    return localSelectedIndices.has(index) || selectedCandles.some(c => c.id === candleId);
+  };
 
   return (
     <div className={`min-h-screen transition-colors duration-200 p-6 ${
@@ -2519,11 +2558,16 @@ const TradingDashboard = () => {
                   } isDarkMode={isDarkMode} />
                 </div>
               </h3>
-              {localSelectedIndices.size > 0 && (
-                <p className="text-sm text-blue-600 mt-1">
-                  {localSelectedIndices.size} candle(s) selected for analysis
-                </p>
-              )}
+              {(() => {
+                const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+                  c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+                );
+                return currentSymbolTimeframeSelection.length > 0 && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    {currentSymbolTimeframeSelection.length} candle(s) selected for analysis
+                  </p>
+                );
+              })()}
             </div>
             <div className="flex gap-2">
               <button
@@ -2537,30 +2581,40 @@ const TradingDashboard = () => {
               >
                 📊 Export CSV
               </button>
-              {localSelectedIndices.size > 0 && (
-                <>
-                  <button
-                    onClick={handleBulkDelete}
-                    className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                      isDarkMode 
-                        ? 'bg-red-800 hover:bg-red-700 text-red-300' 
-                        : 'bg-red-100 hover:bg-red-200 text-red-700'
-                    }`}
-                  >
-                    🗑️ Delete Selected
-                  </button>
-                  <button
-                    onClick={() => setLocalSelectedIndices(new Set())}
-                    className={`px-3 py-2 text-sm rounded-md transition-colors ${
-                      isDarkMode 
-                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    ✖️ Clear Local Selection
-                  </button>
-                </>
-              )}
+              {(() => {
+                const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+                  c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+                );
+                return currentSymbolTimeframeSelection.length > 0 && (
+                  <>
+                    <button
+                      onClick={handleBulkDelete}
+                      className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+                        isDarkMode 
+                          ? 'bg-red-800 hover:bg-red-700 text-red-300' 
+                          : 'bg-red-100 hover:bg-red-200 text-red-700'
+                      }`}
+                    >
+                      🗑️ Delete Selected ({currentSymbolTimeframeSelection.length})
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Clear selections for current symbol/timeframe from global state
+                        currentSymbolTimeframeSelection.forEach(candle => {
+                          removeSelectedCandle(candle.id);
+                        });
+                      }}
+                      className={`px-3 py-2 text-sm rounded-md transition-colors ${
+                        isDarkMode 
+                          ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      ✖️ Clear Selection
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
           
@@ -2667,8 +2721,14 @@ const TradingDashboard = () => {
                           type="checkbox"
                           checked={(() => {
                             if (!tradingData?.data.length) return false;
-                            const filteredIndices = getFilteredIndices();
-                            return localSelectedIndices.size === filteredIndices.length && filteredIndices.length > 0;
+                            const filteredData = getFilteredData();
+                            if (filteredData.length === 0) return false;
+                            
+                            // Check if all filtered candles are selected (either locally or globally)
+                            return filteredData.every((candle, index) => {
+                              const actualIndex = tradingData.data.indexOf(candle);
+                              return isCandleSelected(candle, actualIndex);
+                            });
                           })()}
                           onChange={handleSelectAll}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -2722,7 +2782,7 @@ const TradingDashboard = () => {
                         <tr 
                           key={index} 
                           className={`transition-colors duration-200 cursor-pointer ${
-                            localSelectedIndices.has(index) 
+                            isCandleSelected(row, index) 
                               ? isDarkMode 
                                 ? 'bg-blue-900/30 border-l-4 border-blue-400' 
                                 : 'bg-blue-50 border-l-4 border-blue-500'
@@ -2735,7 +2795,7 @@ const TradingDashboard = () => {
                                                       <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
-                              checked={localSelectedIndices.has(index)}
+                              checked={isCandleSelected(row, index)}
                               onChange={() => handleRowSelect(index, row)}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
