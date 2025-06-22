@@ -372,7 +372,9 @@ const TradingVectorDashboard = ({
     selectedVectorType,
     setSelectedVectorType,
     vectorViewMode,
-    setVectorViewMode
+    setVectorViewMode,
+    sortOrder,
+    setSortOrder
   } = useTrading();
   const [vectorData, setVectorData] = useState(null);
   const [loading, setLoading] = useState(false);

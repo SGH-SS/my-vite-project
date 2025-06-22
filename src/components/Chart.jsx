@@ -355,6 +355,7 @@ const TradingChartDashboard = ({
       
       const highlightedCandlestickData = chartDataRef.current.map(candle => {
         const isSelected = selectedTimestamps.has(candle.timestamp);
+        const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
         const baseData = {
           time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
           open: parseFloat(candle.open),
@@ -363,12 +364,12 @@ const TradingChartDashboard = ({
           close: parseFloat(candle.close),
         };
 
-        // If selected, add blue highlighting colors
+        // If selected, add blue highlighting colors but preserve original wick colors
         if (isSelected) {
           return {
             ...baseData,
             color: '#3b82f6', // Blue body
-            wickColor: '#3b82f6', // Blue wicks
+            wickColor: isBullish ? '#22c55e' : '#ef4444', // Keep original wick colors (green for bull, red for bear)
             borderColor: '#2563eb' // Darker blue border
           };
         }
@@ -557,6 +558,7 @@ const TradingChartDashboard = ({
       // Prepare candlestick data with highlighting
       const candlestickData = data.map(candle => {
         const isSelected = selectedTimestamps.has(candle.timestamp);
+        const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
         const baseData = {
           time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
           open: parseFloat(candle.open),
@@ -565,12 +567,12 @@ const TradingChartDashboard = ({
           close: parseFloat(candle.close),
         };
 
-        // If selected, add blue highlighting colors
+        // If selected, add blue highlighting colors but preserve original wick colors
         if (isSelected) {
           return {
             ...baseData,
             color: '#3b82f6', // Blue body
-            wickColor: '#3b82f6', // Blue wicks
+            wickColor: isBullish ? '#22c55e' : '#ef4444', // Keep original wick colors (green for bull, red for bear)
             borderColor: '#2563eb' // Darker blue border
           };
         }
