@@ -233,11 +233,18 @@ const TradingChartDashboard = ({
   const [dragStart, setDragStart] = useState(null);
   const [dragEnd, setDragEnd] = useState(null);
   
+  // Enhanced selection states
+  const [hoveredCandle, setHoveredCandle] = useState(null);
+  const [selectionModeType, setSelectionModeType] = useState('click'); // click, range, multi, time
+  const [rangeStartIndex, setRangeStartIndex] = useState(null);
+  const [selectionStats, setSelectionStats] = useState(null);
+  
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const selectionOverlayRef = useRef(null);
   const priceSeriesRef = useRef(null);
   const chartDataRef = useRef(null); // Store original chart data
+  const timeScaleRef = useRef(null); // Store timescale reference
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
@@ -301,7 +308,7 @@ const TradingChartDashboard = ({
     }, 50);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedCandles, selectedSymbol, selectedTimeframe]);
+  }, [selectedCandles, selectedSymbol, selectedTimeframe, chartType]);
 
   // Also update highlights when chart data is initially loaded
   useEffect(() => {
@@ -313,26 +320,7 @@ const TradingChartDashboard = ({
     }
   }, [chartData]);
 
-  // Handle global mouse events for selection
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (isDragging) {
-        setIsDragging(false);
-        setDragStart(null);
-        setDragEnd(null);
-      }
-    };
 
-    if (isSelectionMode) {
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-      document.addEventListener('mouseleave', handleGlobalMouseUp);
-      
-      return () => {
-        document.removeEventListener('mouseup', handleGlobalMouseUp);
-        document.removeEventListener('mouseleave', handleGlobalMouseUp);
-      };
-    }
-  }, [isSelectionMode, isDragging]);
 
   const updateChartHighlights = () => {
     console.log('🔍 updateChartHighlights called', {
@@ -346,12 +334,7 @@ const TradingChartDashboard = ({
     });
 
     if (!chartRef.current || !priceSeriesRef.current || !chartDataRef.current) {
-      console.log('⚠️ Missing dependencies for chart highlights:', {
-        hasChart: !!chartRef.current,
-        hasPriceSeries: !!priceSeriesRef.current,
-        hasOriginalData: !!chartDataRef.current,
-        originalDataLength: chartDataRef.current?.length || 0
-      });
+      console.log('⚠️ Missing dependencies for chart highlights');
       return;
     }
 
@@ -382,19 +365,32 @@ const TradingChartDashboard = ({
 
         // If selected, add blue highlighting colors
         if (isSelected) {
-          console.log('📍 Highlighting candle:', candle.timestamp);
           return {
             ...baseData,
-            color: '#3b82f6', // Blue for selected candles
-            wickColor: '#3b82f6' // Blue wick for selected candles
+            color: '#3b82f6', // Blue body
+            wickColor: '#3b82f6', // Blue wicks
+            borderColor: '#2563eb' // Darker blue border
           };
         }
 
         return baseData;
       });
 
-      // Update the series data with highlighted candles
-      priceSeriesRef.current.setData(highlightedCandlestickData);
+      // Update the series data with highlighted candles (only for candlestick charts)
+      if (chartType === 'candlestick') {
+        priceSeriesRef.current.setData(highlightedCandlestickData);
+      } else {
+        // For line and area charts, just update the data without color properties
+        const simpleData = chartDataRef.current.map(candle => ({
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          value: parseFloat(candle.close)
+        }));
+        priceSeriesRef.current.setData(simpleData);
+      }
+
+      // Update selection statistics
+      updateSelectionStats();
+      
       console.log(`✅ Updated chart with ${currentSymbolTimeframeSelection.length} highlighted candles`);
 
     } catch (error) {
@@ -496,6 +492,7 @@ const TradingChartDashboard = ({
       chartRef.current.remove();
       chartRef.current = null;
       priceSeriesRef.current = null;
+      timeScaleRef.current = null;
       // DON'T clear chartDataRef.current here - we need it for highlighting!
     }
 
@@ -525,6 +522,18 @@ const TradingChartDashboard = ({
         },
         crosshair: {
           mode: 1, // CrosshairMode.Normal
+          vertLine: {
+            width: 1,
+            color: isDarkMode ? '#60a5fa' : '#3b82f6',
+            style: 2, // LineStyle.Dashed
+            labelBackgroundColor: isDarkMode ? '#1e40af' : '#3b82f6',
+          },
+          horzLine: {
+            width: 1,
+            color: isDarkMode ? '#60a5fa' : '#3b82f6',
+            style: 2, // LineStyle.Dashed
+            labelBackgroundColor: isDarkMode ? '#1e40af' : '#3b82f6',
+          },
         },
         rightPriceScale: {
           borderColor: isDarkMode ? '#4b5563' : '#d1d5db',
@@ -537,6 +546,7 @@ const TradingChartDashboard = ({
       });
 
       chartRef.current = chart;
+      timeScaleRef.current = chart.timeScale();
 
       // Get selected candles for current symbol/timeframe for highlighting
       const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
@@ -557,11 +567,11 @@ const TradingChartDashboard = ({
 
         // If selected, add blue highlighting colors
         if (isSelected) {
-          console.log('📍 Highlighting selected candle:', candle.timestamp);
           return {
             ...baseData,
-            color: '#3b82f6', // Blue for selected candles
-            wickColor: '#3b82f6' // Blue wick for selected candles
+            color: '#3b82f6', // Blue body
+            wickColor: '#3b82f6', // Blue wicks
+            borderColor: '#2563eb' // Darker blue border
           };
         }
 
@@ -602,13 +612,15 @@ const TradingChartDashboard = ({
       // Auto-fit content
       chart.timeScale().fitContent();
 
+      // Update selection statistics
+      updateSelectionStats();
+      
       // Update highlights for any existing selected candles
       setTimeout(() => {
         if (selectedCandles.length > 0) {
-          console.log('🎨 Applying highlights after chart initialization...');
           updateChartHighlights();
         }
-      }, 250);
+      }, 100);
 
       // Handle resize
       const handleResize = () => {
@@ -675,29 +687,161 @@ const TradingChartDashboard = ({
     };
   };
 
-  // Candle selection functions
+  // Enhanced selection functions
   const toggleSelectionMode = () => {
     setIsSelectionMode(!isSelectionMode);
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
+    setRangeStartIndex(null);
+    setHoveredCandle(null);
+    
+    // Reset to default selection mode
+    if (!isSelectionMode) {
+      setSelectionModeType('click');
+    }
   };
+  
+  const updateSelectionStats = () => {
+    const currentSelection = selectedCandles.filter(c => 
+      c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+    );
+    
+    if (currentSelection.length === 0) {
+      setSelectionStats(null);
+      return;
+    }
+    
+    const prices = currentSelection.map(c => c.close);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const totalChange = currentSelection.reduce((sum, c) => sum + c.change, 0);
+    const avgChange = totalChange / currentSelection.length;
+    
+    const timestamps = currentSelection.map(c => new Date(c.timestamp).getTime());
+    const timeRange = Math.max(...timestamps) - Math.min(...timestamps);
+    const timeRangeStr = formatTimeRange(timeRange);
+    
+    setSelectionStats({
+      count: currentSelection.length,
+      avgPrice,
+      minPrice,
+      maxPrice,
+      totalChange,
+      avgChange,
+      timeRange: timeRangeStr,
+      bullish: currentSelection.filter(c => c.change > 0).length,
+      bearish: currentSelection.filter(c => c.change < 0).length,
+    });
+  };
+  
+  const formatTimeRange = (milliseconds) => {
+    const minutes = Math.floor(milliseconds / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m`;
+  };
+  
+  const handleRangeSelection = (endIndex, endX) => {
+    if (rangeStartIndex === null) {
+      // First click - set range start
+      setRangeStartIndex(endIndex);
+    } else {
+      // Second click - select range
+      const startIdx = Math.min(rangeStartIndex, endIndex);
+      const endIdx = Math.max(rangeStartIndex, endIndex);
+      
+      for (let i = startIdx; i <= endIdx; i++) {
+        if (i >= 0 && i < chartData.data.length) {
+          const candle = chartData.data[i];
+          const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+          
+          // Only add if not already selected
+          if (!selectedCandles.some(c => c.id === candleId)) {
+            selectCandle(candle, i);
+          }
+        }
+      }
+      
+      setRangeStartIndex(null);
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (!isSelectionMode) return;
+    
+    // Shift key - switch to range selection mode
+    if (e.shiftKey && selectionModeType !== 'range') {
+      setSelectionModeType('range');
+    }
+    
+    // Ctrl/Cmd key - switch to multi-select mode
+    if ((e.ctrlKey || e.metaKey) && selectionModeType !== 'multi') {
+      setSelectionModeType('multi');
+    }
+    
+    // Escape key - exit selection mode
+    if (e.key === 'Escape') {
+      toggleSelectionMode();
+    }
+    
+    // Delete key - clear selection
+    if (e.key === 'Delete' && selectedCandles.length > 0) {
+      // Clear only current symbol/timeframe selection
+      const toRemove = selectedCandles.filter(c => 
+        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+      );
+      toRemove.forEach(c => removeSelectedCandle(c.id));
+    }
+  };
+  
+  const handleKeyUp = (e) => {
+    if (!isSelectionMode) return;
+    
+    // Return to default click mode when modifier keys are released
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      setSelectionModeType('click');
+    }
+  };
+  
+  // Add keyboard event listeners
+  useEffect(() => {
+    if (isSelectionMode) {
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+      };
+    }
+  }, [isSelectionMode, selectionModeType]);
 
   const getCandleFromPosition = (x, containerRect) => {
-    if (!chartData?.data || !chartRef.current) return null;
+    if (!chartData?.data || !chartRef.current || !timeScaleRef.current) return null;
     
-    // Calculate relative position within chart
-    const relativeX = x - containerRect.left;
-    const chartWidth = containerRect.width;
-    
-    // Map position to candle index
-    const candleIndex = Math.floor((relativeX / chartWidth) * chartData.data.length);
-    
-    if (candleIndex >= 0 && candleIndex < chartData.data.length) {
-      return {
-        index: candleIndex,
-        candle: chartData.data[candleIndex]
-      };
+    try {
+      // Convert screen X coordinate to logical coordinate
+      const timeScale = timeScaleRef.current;
+      const logical = timeScale.coordinateToLogical(x - containerRect.left);
+      
+      if (logical === null) return null;
+      
+      // Find the closest candle to this logical index
+      const candleIndex = Math.round(logical);
+      
+      if (candleIndex >= 0 && candleIndex < chartData.data.length) {
+        return {
+          index: candleIndex,
+          candle: chartData.data[candleIndex]
+        };
+      }
+    } catch (error) {
+      console.error('Error getting candle from position:', error);
     }
     
     return null;
@@ -711,9 +855,9 @@ const TradingChartDashboard = ({
     // Check if already selected
     const isSelected = selectedCandles.some(c => c.id === candleId);
     
-    if (isSelected) {
+    if (isSelected && selectionModeType !== 'multi') {
       removeSelectedCandle(candleId);
-    } else {
+    } else if (!isSelected) {
       const candleWithMetadata = {
         id: candleId,
         symbol: selectedSymbol,
@@ -750,7 +894,13 @@ const TradingChartDashboard = ({
     // Select all candles in range
     for (let i = startIndex; i <= endIndex; i++) {
       if (i >= 0 && i < chartData.data.length) {
-        selectCandle(chartData.data[i], i);
+        const candle = chartData.data[i];
+        const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+        
+        // Only add if not already selected
+        if (!selectedCandles.some(c => c.id === candleId)) {
+          selectCandle(candle, i);
+        }
       }
     }
   };
@@ -758,15 +908,34 @@ const TradingChartDashboard = ({
   const handleOverlayMouseDown = (e) => {
     if (!isSelectionMode) return;
     
+    e.preventDefault();
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
     setDragEnd({ x: e.clientX, y: e.clientY });
   };
 
   const handleOverlayMouseMove = (e) => {
-    if (!isSelectionMode || !isDragging) return;
+    if (!isSelectionMode) return;
     
-    setDragEnd({ x: e.clientX, y: e.clientY });
+    const containerRect = chartContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    
+    // Update hover info
+    const candleData = getCandleFromPosition(e.clientX, containerRect);
+    if (candleData) {
+      setHoveredCandle({
+        index: candleData.index,
+        candle: candleData.candle,
+        position: { x: e.clientX - containerRect.left, y: e.clientY - containerRect.top }
+      });
+    } else {
+      setHoveredCandle(null);
+    }
+    
+    // Update drag selection
+    if (isDragging) {
+      setDragEnd({ x: e.clientX, y: e.clientY });
+    }
   };
 
   const handleOverlayMouseUp = (e) => {
@@ -781,7 +950,11 @@ const TradingChartDashboard = ({
       // Single click - select individual candle
       const candleData = getCandleFromPosition(e.clientX, containerRect);
       if (candleData) {
-        selectCandle(candleData.candle, candleData.index);
+        if (selectionModeType === 'range') {
+          handleRangeSelection(candleData.index, e.clientX);
+        } else {
+          selectCandle(candleData.candle, candleData.index);
+        }
       }
     } else {
       // Drag selection - select range of candles
@@ -811,10 +984,43 @@ const TradingChartDashboard = ({
       width: `${width}px`,
       height: `${height}px`,
       backgroundColor: 'rgba(59, 130, 246, 0.1)',
-      border: '2px dashed rgba(59, 130, 246, 0.5)',
+      border: '2px solid rgba(59, 130, 246, 0.5)',
+      borderRadius: '4px',
       pointerEvents: 'none',
       zIndex: 10
     };
+  };
+  
+  const selectTimeRange = (range) => {
+    if (!chartData?.data || chartData.data.length === 0) return;
+    
+    // Get the latest timestamp
+    const latestTime = new Date(chartData.data[chartData.data.length - 1].timestamp).getTime();
+    
+    // Calculate the time threshold based on range
+    let hoursBack = 1;
+    switch (range) {
+      case '1h': hoursBack = 1; break;
+      case '4h': hoursBack = 4; break;
+      case '1d': hoursBack = 24; break;
+      default: hoursBack = 1;
+    }
+    
+    const threshold = latestTime - (hoursBack * 60 * 60 * 1000);
+    
+    // Select all candles within the time range
+    chartData.data.forEach((candle, index) => {
+      const candleTime = new Date(candle.timestamp).getTime();
+      if (candleTime >= threshold) {
+        const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+        if (!selectedCandles.some(c => c.id === candleId)) {
+          selectCandle(candle, index);
+        }
+      }
+    });
+    
+    // Update mode type to indicate time selection
+    setSelectionModeType('time');
   };
 
   if (loading) {
@@ -972,6 +1178,43 @@ const TradingChartDashboard = ({
               </select>
             </div>
 
+            {/* Time Range Quick Selection - Only visible in selection mode */}
+            {isSelectionMode && (
+              <div className="flex items-center gap-1">
+                <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Quick Select:</span>
+                <button
+                  onClick={() => selectTimeRange('1h')}
+                  className={`px-2 py-1 text-xs rounded ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  1H
+                </button>
+                <button
+                  onClick={() => selectTimeRange('4h')}
+                  className={`px-2 py-1 text-xs rounded ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  4H
+                </button>
+                <button
+                  onClick={() => selectTimeRange('1d')}
+                  className={`px-2 py-1 text-xs rounded ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  1D
+                </button>
+              </div>
+            )}
+
             {/* Selection Mode Toggle */}
             <button
               onClick={toggleSelectionMode}
@@ -1002,24 +1245,77 @@ const TradingChartDashboard = ({
 
         {/* Chart Area */}
         <div className="p-6">
-          {/* Selection Instructions */}
+          {/* Enhanced Selection Instructions */}
           {isSelectionMode && (
-            <div className={`mb-4 p-3 rounded-lg border transition-colors duration-200 ${
-              isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
-            }`}>
-              <div className="flex items-center mb-2">
-                <span className="text-lg mr-2">ℹ️</span>
-                <span className="font-medium">Selection Mode Active</span>
+            <div className="space-y-3 mb-4">
+              {/* Selection Mode Indicator */}
+              <div className={`p-3 rounded-lg border transition-colors duration-200 ${
+                isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <span className="text-lg mr-2">🎯</span>
+                    <span className="font-medium">Selection Mode: {selectionModeType.toUpperCase()}</span>
+                  </div>
+                  <div className="flex gap-2 text-xs">
+                    <span className={`px-2 py-1 rounded ${selectionModeType === 'click' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                      Click
+                    </span>
+                    <span className={`px-2 py-1 rounded ${selectionModeType === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                      Range (Shift)
+                    </span>
+                    <span className={`px-2 py-1 rounded ${selectionModeType === 'multi' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                      Multi (Ctrl)
+                    </span>
+                  </div>
+                </div>
+                <div className="text-sm grid grid-cols-2 gap-2">
+                  <div>
+                    <p>• <strong>Click:</strong> Select/deselect individual candles</p>
+                    <p>• <strong>Shift+Click:</strong> Select range between two points</p>
+                    <p>• <strong>Ctrl+Click:</strong> Add to selection</p>
+                  </div>
+                  <div>
+                    <p>• <strong>Delete:</strong> Clear current selection</p>
+                    <p>• <strong>Escape:</strong> Exit selection mode</p>
+                    <p>• <strong>Hover:</strong> Preview candle data</p>
+                  </div>
+                </div>
               </div>
-              <div className="text-sm">
-                <p>• <strong>Click</strong> individual candles to select/deselect them</p>
-                <p>• <strong>Drag</strong> to create a rectangular selection (like Photoshop)</p>
-                <p>• <strong>Selected candles</strong> turn blue and move seamlessly with chart interactions</p>
-                <p>• Selected candles appear in the "Selected Candles" panel above</p>
-                <p>• Selection is synchronized across all dashboards</p>
-                <p>• Blue highlighting integrates with pan/zoom operations</p>
-                <p>• Click "Selection Mode ON" to exit selection mode</p>
-              </div>
+              
+              {/* Selection Statistics */}
+              {selectionStats && (
+                <div className={`p-3 rounded-lg border transition-colors duration-200 ${
+                  isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center mb-2">
+                    <span className="text-lg mr-2">📊</span>
+                    <span className="font-medium">Selection Statistics</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Count:</span>
+                      <span className="ml-1 font-medium">{selectionStats.count} candles</span>
+                    </div>
+                    <div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Time Range:</span>
+                      <span className="ml-1 font-medium">{selectionStats.timeRange}</span>
+                    </div>
+                    <div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Avg Price:</span>
+                      <span className="ml-1 font-medium">${selectionStats.avgPrice.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Trend:</span>
+                      <span className="ml-1">
+                        <span className="text-green-500">↑{selectionStats.bullish}</span>
+                        <span className="mx-1">/</span>
+                        <span className="text-red-500">↓{selectionStats.bearish}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
@@ -1034,8 +1330,6 @@ const TradingChartDashboard = ({
           >
             {/* Chart is rendered programmatically via lightweight-charts */}
             
-            {/* Chart is rendered programmatically via lightweight-charts with integrated highlighting */}
-            
             {/* Selection Overlay */}
             {isSelectionMode && (
               <div
@@ -1049,6 +1343,7 @@ const TradingChartDashboard = ({
                 onMouseMove={handleOverlayMouseMove}
                 onMouseUp={handleOverlayMouseUp}
                 onMouseLeave={() => {
+                  setHoveredCandle(null);
                   if (isDragging) {
                     setIsDragging(false);
                     setDragStart(null);
@@ -1059,27 +1354,55 @@ const TradingChartDashboard = ({
                 {/* Selection Rectangle */}
                 {isDragging && (
                   <div
-                    className="absolute rounded"
+                    className="absolute"
                     style={getSelectionBoxStyle()}
                   />
                 )}
                 
+                {/* Hover Tooltip */}
+                {hoveredCandle && (
+                  <div 
+                    className={`absolute z-30 pointer-events-none px-2 py-1 rounded text-xs ${
+                      isDarkMode 
+                        ? 'bg-gray-900/90 text-gray-200 border border-gray-600' 
+                        : 'bg-white/90 text-gray-800 border border-gray-300'
+                    }`}
+                    style={{
+                      left: `${hoveredCandle.position.x + 10}px`,
+                      top: `${hoveredCandle.position.y - 30}px`,
+                      transform: 'translateY(-100%)',
+                    }}
+                  >
+                    <div className="font-medium">{formatTimestamp(hoveredCandle.candle.timestamp)}</div>
+                    <div>O: ${hoveredCandle.candle.open.toFixed(2)}</div>
+                    <div>H: ${hoveredCandle.candle.high.toFixed(2)}</div>
+                    <div>L: ${hoveredCandle.candle.low.toFixed(2)}</div>
+                    <div>C: ${hoveredCandle.candle.close.toFixed(2)}</div>
+                    <div className={hoveredCandle.candle.close > hoveredCandle.candle.open ? 'text-green-500' : 'text-red-500'}>
+                      {hoveredCandle.candle.close > hoveredCandle.candle.open ? '↑' : '↓'} 
+                      ${Math.abs(hoveredCandle.candle.close - hoveredCandle.candle.open).toFixed(2)}
+                    </div>
+                  </div>
+                )}
+                
                 {/* Selection Mode Indicator */}
-                <div className={`absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium ${
+                <div className={`absolute top-2 left-2 px-3 py-1 rounded text-xs font-medium ${
                   isDarkMode 
                     ? 'bg-blue-900/80 text-blue-200 border border-blue-600' 
                     : 'bg-blue-100/80 text-blue-700 border border-blue-300'
                 }`}>
-                  🎯 Selection Mode
+                  🎯 {selectionModeType === 'range' && rangeStartIndex !== null 
+                    ? 'Click to complete range' 
+                    : `${selectionModeType.charAt(0).toUpperCase() + selectionModeType.slice(1)} Mode`}
                 </div>
                 
-                {/* Selection Instructions */}
+                {/* Instructions */}
                 <div className={`absolute top-2 right-2 px-2 py-1 rounded text-xs ${
                   isDarkMode 
                     ? 'bg-gray-900/80 text-gray-300 border border-gray-600' 
                     : 'bg-white/80 text-gray-600 border border-gray-300'
                 }`}>
-                  Click or drag to select candles
+                  {isDragging ? 'Drag to select multiple candles' : 'Click or drag to select candles'}
                 </div>
               </div>
             )}
