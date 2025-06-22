@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import TradingChartDashboard from './Chart.jsx';
 import TradingLLMDashboard from './LLMDashboard.jsx';
+import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
 
 // Reusable InfoTooltip component
@@ -167,7 +168,7 @@ const DataSelectionControls = ({
           <label className={`block text-sm font-medium mb-2 ${
             isDarkMode ? 'text-gray-300' : 'text-gray-700'
           }`}>
-            {dashboardType === 'vector' ? 'Vector Limit' : dashboardType === 'chart' ? 'Data Limit' : 'Rows per page'}
+            Data Limit
           </label>
           <select
             value={rowLimit}
@@ -178,122 +179,46 @@ const DataSelectionControls = ({
                 : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
-            {dashboardType === 'vector' ? (
-              <>
-                <option value={25}>25 vectors</option>
-                <option value={50}>50 vectors</option>
-                <option value={100}>100 vectors</option>
-                <option value={250}>250 vectors</option>
-                <option value={500}>500 vectors</option>
-              </>
-            ) : dashboardType === 'chart' ? (
-              <>
-                <option value={100}>100 candles</option>
-                <option value={250}>250 candles</option>
-                <option value={500}>500 candles</option>
-                <option value={1000}>1000 candles</option>
-                <option value={2000}>2000 candles</option>
-              </>
-            ) : (
-              <>
-                <option value={25}>25 rows</option>
-                <option value={50}>50 rows</option>
-                <option value={100}>100 rows</option>
-                <option value={250}>250 rows</option>
-                <option value={500}>500 rows</option>
-              </>
-            )}
+            <option value={25}>25 records</option>
+            <option value={50}>50 records</option>
+            <option value={100}>100 records</option>
+            <option value={250}>250 records</option>
+            <option value={500}>500 records</option>
+            <option value={1000}>1000 records</option>
+            <option value={2000}>2000 records</option>
           </select>
         </div>
 
         <div>
-          {sortOrder && setSortOrder ? (
-            <>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Sort Order
-                </label>
-                <InfoTooltip id="sort-order" content={
-                  <div>
-                    <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
-                      <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
-                    </ul>
-                    <p className="mt-2 text-xs"><strong>Note:</strong> Backend sorting quality is shown in debug info. Client-side fallback ensures proper ordering.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
+          <div className="flex items-center mb-2">
+            <label className={`block text-sm font-medium ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Sort Order
+            </label>
+            <InfoTooltip id="sort-order" content={
+              <div>
+                <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
+                  <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
+                </ul>
+                <p className="mt-2 text-xs"><strong>Note:</strong> Sort order is synchronized across all dashboards. This affects both data tables and charts.</p>
               </div>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-                  isDarkMode 
-                    ? 'border-gray-600 bg-gray-700 text-white' 
-                    : 'border-gray-300 bg-white text-gray-900'
-                }`}
-              >
-                <option value="desc">⬇ Descending (Newest first)</option>
-                <option value="asc">⬆ Ascending (Oldest first)</option>
-              </select>
-            </>
-          ) : dashboardType === 'vector' ? (
-            <>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Data Info
-                </label>
-                <InfoTooltip id="data-info" content={
-                  <div>
-                    <p className="font-semibold mb-2">📊 Data Information</p>
-                    <p className="mb-2">Current status of loaded vector data:</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>Vectors Loaded:</strong> Number of trading periods currently in memory</li>
-                      <li><strong>Real-time:</strong> Updates when you change symbol, timeframe, or limit</li>
-                      <li><strong>Performance:</strong> More vectors = more analysis depth</li>
-                    </ul>
-                    <p className="mt-2 text-xs">This shows actual data availability for the selected symbol and timeframe.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
-              </div>
-              <div className={`px-3 py-2 rounded-md text-sm font-mono ${
-                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-              }`}>
-                {rowLimit} vectors loaded
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center mb-2">
-                <label className={`block text-sm font-medium ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  Chart Info
-                </label>
-                <InfoTooltip id="chart-info" content={
-                  <div>
-                    <p className="font-semibold mb-2">📈 Chart Information</p>
-                    <p className="mb-2">Current chart data status:</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li><strong>Candles:</strong> Number of price periods displayed</li>
-                      <li><strong>Real-time:</strong> Updates when you change symbol or timeframe</li>
-                      <li><strong>Interactive:</strong> Zoom, pan, and hover for details</li>
-                    </ul>
-                    <p className="mt-2 text-xs">More candles provide better technical analysis context.</p>
-                  </div>
-                } isDarkMode={isDarkMode} />
-              </div>
-              <div className={`px-3 py-2 rounded-md text-sm font-mono ${
-                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-              }`}>
-                {rowLimit} candles
-              </div>
-            </>
-          )}
+            } isDarkMode={isDarkMode} />
+          </div>
+          <select
+            value={sortOrder || 'desc'}
+            onChange={(e) => setSortOrder && setSortOrder(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="desc">⬇ Descending (Newest first)</option>
+            <option value="asc">⬆ Ascending (Oldest first)</option>
+          </select>
         </div>
       </div>
 
@@ -1255,9 +1180,17 @@ const TradingVectorDashboard = ({
           setSelectedTimeframe={setSelectedTimeframe}
           rowLimit={rowLimit}
           setRowLimit={setRowLimit}
+          sortOrder={sortOrder}
+          setSortOrder={setSortOrder}
           handleRefresh={fetchVectorData}
           isDarkMode={isDarkMode}
           dashboardType="vector"
+        />
+
+        {/* Selected Candles Panel */}
+        <SelectedCandlesPanel 
+          isDarkMode={isDarkMode} 
+          canSelectCandles={false}
         />
 
       {/* Vector Type Selector */}
@@ -1702,8 +1635,23 @@ const TradingDashboard = () => {
     setShowColumnFilters,
     showDebugInfo,
     setShowDebugInfo,
-    resetFilters
+    resetFilters,
+    selectedCandles,
+    addSelectedCandle,
+    removeSelectedCandle,
+    clearSelectedCandles
   } = useTrading();
+
+  // Debug: Log context values to check synchronization
+  useEffect(() => {
+    console.log('📊 Data Dashboard - Context state:', {
+      selectedSymbol,
+      selectedTimeframe,
+      rowLimit,
+      sortOrder,
+      currentPage
+    });
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, currentPage]);
 
   // Dashboard mode is local to each tab (not shared)
   const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', or 'llm'
@@ -1714,7 +1662,9 @@ const TradingDashboard = () => {
   const [tradingData, setTradingData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedRows, setSelectedRows] = useState(new Set());
+  // Local selection state is now managed by TradingContext as selectedCandles
+  // Keep track of local indices for UI purposes
+  const [localSelectedIndices, setLocalSelectedIndices] = useState(new Set());
   const [lastFetchInfo, setLastFetchInfo] = useState(null);
   
   // Theme management (separate from trading state)
@@ -1755,6 +1705,11 @@ const TradingDashboard = () => {
       setCurrentPage(1); // Reset to first page when selection changes
     }
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn]);
+
+  // Clear local selection when changing symbol, timeframe, or page
+  useEffect(() => {
+    setLocalSelectedIndices(new Set());
+  }, [selectedSymbol, selectedTimeframe, currentPage]);
 
   const fetchStats = async () => {
     try {
@@ -2125,23 +2080,85 @@ const TradingDashboard = () => {
     setCurrentPage(1);
   };
 
-  const handleRowSelect = (index) => {
-    const newSelected = new Set(selectedRows);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
+  const handleRowSelect = (index, candle) => {
+    // Create a unique ID for the candle based on symbol, timeframe, and timestamp
+    const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+    
+    // Check if this candle is already selected
+    const isSelected = selectedCandles.some(c => c.id === candleId);
+    
+    if (isSelected) {
+      // Remove from selection
+      removeSelectedCandle(candleId);
+      setLocalSelectedIndices(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(index);
+        return newSet;
+      });
     } else {
-      newSelected.add(index);
+      // Add to selection with full candle data
+      const candleWithMetadata = {
+        id: candleId,
+        symbol: selectedSymbol,
+        timeframe: selectedTimeframe,
+        timestamp: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        // Add calculated fields
+        change: candle.close - candle.open,
+        changePercent: ((candle.close - candle.open) / candle.open) * 100,
+        // Add index for reference
+        sourceIndex: index
+      };
+      
+      addSelectedCandle(candleWithMetadata);
+      setLocalSelectedIndices(prev => new Set([...prev, index]));
     }
-    setSelectedRows(newSelected);
   };
 
   const handleSelectAll = () => {
+    const filteredData = getFilteredData();
     const filteredIndices = getFilteredIndices();
 
-    if (selectedRows.size === filteredIndices.length && filteredIndices.length > 0) {
-      setSelectedRows(new Set());
+    if (localSelectedIndices.size === filteredIndices.length && filteredIndices.length > 0) {
+      // Clear all selections
+      // Remove only candles from current page/filter
+      const currentPageCandleIds = filteredData.map(candle => 
+        `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`
+      );
+      
+      // Remove current page candles from selection
+      currentPageCandleIds.forEach(id => removeSelectedCandle(id));
+      setLocalSelectedIndices(new Set());
     } else {
-      setSelectedRows(new Set(filteredIndices));
+      // Select all filtered candles
+      filteredData.forEach((candle, index) => {
+        const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+        
+        if (!selectedCandles.some(c => c.id === candleId)) {
+          const candleWithMetadata = {
+            id: candleId,
+            symbol: selectedSymbol,
+            timeframe: selectedTimeframe,
+            timestamp: candle.timestamp,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+            change: candle.close - candle.open,
+            changePercent: ((candle.close - candle.open) / candle.open) * 100,
+            sourceIndex: index
+          };
+          
+          addSelectedCandle(candleWithMetadata);
+        }
+      });
+      
+      setLocalSelectedIndices(new Set(filteredIndices));
     }
   };
 
@@ -2185,17 +2202,18 @@ const TradingDashboard = () => {
   };
 
   const handleBulkDelete = () => {
-    if (selectedRows.size === 0) return;
+    if (localSelectedIndices.size === 0) return;
     
-    if (confirm(`Are you sure you want to delete ${selectedRows.size} selected rows?`)) {
+    if (confirm(`Are you sure you want to delete ${localSelectedIndices.size} selected candles?`)) {
       // TODO: Implement bulk delete API call
       alert('Bulk delete functionality would be implemented here');
-      setSelectedRows(new Set());
+      setLocalSelectedIndices(new Set());
+      // Note: We keep the selectedCandles as they might be used in other dashboards
     }
   };
 
   const handleRefresh = () => {
-    setSelectedRows(new Set());
+    setLocalSelectedIndices(new Set());
     fetchTradingData();
   };
 
@@ -2445,6 +2463,12 @@ const TradingDashboard = () => {
           dashboardType="data"
         />
 
+        {/* Selected Candles Panel */}
+        <SelectedCandlesPanel 
+          isDarkMode={isDarkMode} 
+          canSelectCandles={true}
+        />
+
         {/* Trading Data Table */}
         <div className={`rounded-lg shadow-md overflow-hidden transition-colors duration-200 ${
           isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -2495,9 +2519,9 @@ const TradingDashboard = () => {
                   } isDarkMode={isDarkMode} />
                 </div>
               </h3>
-              {selectedRows.size > 0 && (
+              {localSelectedIndices.size > 0 && (
                 <p className="text-sm text-blue-600 mt-1">
-                  {selectedRows.size} row(s) selected
+                  {localSelectedIndices.size} candle(s) selected for analysis
                 </p>
               )}
             </div>
@@ -2513,7 +2537,7 @@ const TradingDashboard = () => {
               >
                 📊 Export CSV
               </button>
-              {selectedRows.size > 0 && (
+              {localSelectedIndices.size > 0 && (
                 <>
                   <button
                     onClick={handleBulkDelete}
@@ -2526,14 +2550,14 @@ const TradingDashboard = () => {
                     🗑️ Delete Selected
                   </button>
                   <button
-                    onClick={() => setSelectedRows(new Set())}
+                    onClick={() => setLocalSelectedIndices(new Set())}
                     className={`px-3 py-2 text-sm rounded-md transition-colors ${
                       isDarkMode 
                         ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
                         : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                     }`}
                   >
-                    ✖️ Clear Selection
+                    ✖️ Clear Local Selection
                   </button>
                 </>
               )}
@@ -2644,7 +2668,7 @@ const TradingDashboard = () => {
                           checked={(() => {
                             if (!tradingData?.data.length) return false;
                             const filteredIndices = getFilteredIndices();
-                            return selectedRows.size === filteredIndices.length && filteredIndices.length > 0;
+                            return localSelectedIndices.size === filteredIndices.length && filteredIndices.length > 0;
                           })()}
                           onChange={handleSelectAll}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -2697,8 +2721,8 @@ const TradingDashboard = () => {
                       return (
                         <tr 
                           key={index} 
-                          className={`transition-colors duration-200 ${
-                            selectedRows.has(index) 
+                          className={`transition-colors duration-200 cursor-pointer ${
+                            localSelectedIndices.has(index) 
                               ? isDarkMode 
                                 ? 'bg-blue-900/30 border-l-4 border-blue-400' 
                                 : 'bg-blue-50 border-l-4 border-blue-500'
@@ -2706,12 +2730,13 @@ const TradingDashboard = () => {
                                 ? 'hover:bg-gray-700' 
                                 : 'hover:bg-gray-50'
                           }`}
+                          onClick={() => handleRowSelect(index, row)}
                         >
-                          <td className="px-4 py-3 whitespace-nowrap">
+                                                      <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
-                              checked={selectedRows.has(index)}
-                              onChange={() => handleRowSelect(index)}
+                              checked={localSelectedIndices.has(index)}
+                              onChange={() => handleRowSelect(index, row)}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                           </td>

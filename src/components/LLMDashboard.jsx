@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTrading } from '../context/TradingContext';
+import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 
 // Reusable InfoTooltip component (shared across dashboards)
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -56,7 +57,9 @@ const DataSelectionControls = ({
     selectedTimeframe,
     setSelectedTimeframe,
     rowLimit,
-    setRowLimit
+    setRowLimit,
+    sortOrder,
+    setSortOrder
   } = useTrading();
 
   return (
@@ -132,7 +135,7 @@ const DataSelectionControls = ({
           <label className={`block text-sm font-medium mb-2 ${
             isDarkMode ? 'text-gray-300' : 'text-gray-700'
           }`}>
-            Analysis Depth
+            Data Limit
           </label>
           <select
             value={rowLimit}
@@ -143,11 +146,13 @@ const DataSelectionControls = ({
                 : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
-            <option value={100}>100 periods (Quick)</option>
-            <option value={250}>250 periods (Standard)</option>
-            <option value={500}>500 periods (Deep)</option>
-            <option value={1000}>1000 periods (Comprehensive)</option>
-            <option value={2000}>2000 periods (Maximum)</option>
+            <option value={25}>25 records</option>
+            <option value={50}>50 records</option>
+            <option value={100}>100 records</option>
+            <option value={250}>250 records</option>
+            <option value={500}>500 records</option>
+            <option value={1000}>1000 records</option>
+            <option value={2000}>2000 records</option>
           </select>
         </div>
 
@@ -156,27 +161,31 @@ const DataSelectionControls = ({
             <label className={`block text-sm font-medium ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
-              AI Model Status
+              Sort Order
             </label>
-            <InfoTooltip id="ai-model-status" content={
+            <InfoTooltip id="sort-order" content={
               <div>
-                <p className="font-semibold mb-2">🤖 AI Model Information</p>
-                <p className="mb-2">Current AI analysis capabilities:</p>
+                <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Analysis Depth:</strong> Number of historical periods to analyze</li>
-                  <li><strong>Model Status:</strong> Current AI model operational state</li>
-                  <li><strong>Processing Power:</strong> Available computational resources</li>
-                  <li><strong>Real-time:</strong> Updates with symbol and timeframe changes</li>
+                  <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
+                  <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
                 </ul>
-                <p className="mt-2 text-xs">More data periods provide deeper insights but require more processing time.</p>
+                <p className="mt-2 text-xs"><strong>Note:</strong> Sort order is synchronized across all dashboards. This affects both data tables and charts.</p>
               </div>
             } isDarkMode={isDarkMode} />
           </div>
-          <div className={`px-3 py-2 rounded-md text-sm font-mono ${
-            isDarkMode ? 'bg-gray-700 text-green-300' : 'bg-gray-100 text-green-700'
-          }`}>
-            🟢 AI Ready
-          </div>
+          <select
+            value={sortOrder || 'desc'}
+            onChange={(e) => setSortOrder && setSortOrder(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="desc">⬇ Descending (Newest first)</option>
+            <option value="asc">⬆ Ascending (Oldest first)</option>
+          </select>
         </div>
       </div>
     </div>
@@ -194,7 +203,9 @@ const TradingLLMDashboard = ({
     selectedTimeframe,
     setSelectedTimeframe,
     rowLimit,
-    setRowLimit
+    setRowLimit,
+    sortOrder,
+    setSortOrder
   } = useTrading();
 
   const [llmData, setLlmData] = useState(null);
@@ -658,11 +669,17 @@ const TradingLLMDashboard = ({
         </div>
       </div>
 
-      {/* Data Selection & Controls */}
-      <DataSelectionControls
+            {/* Data Selection & Controls */}
+      <DataSelectionControls 
         handleRefresh={handleRefresh}
         isDarkMode={isDarkMode}
         dashboardType="llm"
+      />
+
+      {/* Selected Candles Panel */}
+      <SelectedCandlesPanel 
+        isDarkMode={isDarkMode} 
+        canSelectCandles={false}
       />
 
       {/* AI Model Configuration */}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 // Import lightweight-charts v5.0 - install with: npm install lightweight-charts
 import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType } from 'lightweight-charts';
 import { useTrading } from '../context/TradingContext';
+import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 
 // Reusable InfoTooltip component (shared across dashboards)
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -58,7 +59,9 @@ const DataSelectionControls = ({
     selectedTimeframe,
     setSelectedTimeframe,
     rowLimit,
-    setRowLimit
+    setRowLimit,
+    sortOrder,
+    setSortOrder
   } = useTrading();
   return (
     <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
@@ -133,7 +136,7 @@ const DataSelectionControls = ({
           <label className={`block text-sm font-medium mb-2 ${
             isDarkMode ? 'text-gray-300' : 'text-gray-700'
           }`}>
-            {dashboardType === 'vector' ? 'Vector Limit' : dashboardType === 'chart' ? 'Data Limit' : 'Rows per page'}
+            Data Limit
           </label>
           <select
             value={rowLimit}
@@ -144,23 +147,13 @@ const DataSelectionControls = ({
                 : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
-            {dashboardType === 'chart' ? (
-              <>
-                <option value={100}>100 candles</option>
-                <option value={250}>250 candles</option>
-                <option value={500}>500 candles</option>
-                <option value={1000}>1000 candles</option>
-                <option value={2000}>2000 candles</option>
-              </>
-            ) : (
-              <>
-                <option value={25}>25 rows</option>
-                <option value={50}>50 rows</option>
-                <option value={100}>100 rows</option>
-                <option value={250}>250 rows</option>
-                <option value={500}>500 rows</option>
-              </>
-            )}
+            <option value={25}>25 records</option>
+            <option value={50}>50 records</option>
+            <option value={100}>100 records</option>
+            <option value={250}>250 records</option>
+            <option value={500}>500 records</option>
+            <option value={1000}>1000 records</option>
+            <option value={2000}>2000 records</option>
           </select>
         </div>
 
@@ -169,26 +162,31 @@ const DataSelectionControls = ({
             <label className={`block text-sm font-medium ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
-              Chart Info
+              Sort Order
             </label>
-            <InfoTooltip id="chart-info" content={
+            <InfoTooltip id="sort-order" content={
               <div>
-                <p className="font-semibold mb-2">📈 Chart Information</p>
-                <p className="mb-2">Current chart data status:</p>
+                <p className="font-semibold mb-2">⬇️ Sort Order Options</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Candles:</strong> Number of price periods displayed</li>
-                  <li><strong>Real-time:</strong> Updates when you change symbol or timeframe</li>
-                  <li><strong>Interactive:</strong> Zoom, pan, and hover for details</li>
+                  <li><strong>Descending (Newest first):</strong> Shows most recent trading data</li>
+                  <li><strong>Ascending (Oldest first):</strong> Shows historical data from the beginning</li>
                 </ul>
-                <p className="mt-2 text-xs">More candles provide better technical analysis context.</p>
+                <p className="mt-2 text-xs"><strong>Note:</strong> Sort order is synchronized across all dashboards. This affects both data tables and charts.</p>
               </div>
             } isDarkMode={isDarkMode} />
           </div>
-          <div className={`px-3 py-2 rounded-md text-sm font-mono ${
-            isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-          }`}>
-            {rowLimit} candles
-          </div>
+          <select
+            value={sortOrder || 'desc'}
+            onChange={(e) => setSortOrder && setSortOrder(e.target.value)}
+            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+              isDarkMode 
+                ? 'border-gray-600 bg-gray-700 text-white' 
+                : 'border-gray-300 bg-white text-gray-900'
+            }`}
+          >
+            <option value="desc">⬇ Descending (Newest first)</option>
+            <option value="asc">⬆ Ascending (Oldest first)</option>
+          </select>
         </div>
       </div>
     </div>
@@ -206,33 +204,47 @@ const TradingChartDashboard = ({
     selectedTimeframe,
     setSelectedTimeframe,
     rowLimit,
-    setRowLimit
+    setRowLimit,
+    sortOrder,
+    setSortOrder,
+    selectedCandles,
+    addSelectedCandle,
+    removeSelectedCandle
   } = useTrading();
 
   // Debug: Log when context values change (can be removed in production)
   useEffect(() => {
-    console.log('🔄 Chart Dashboard - Trading context changed:', {
+    console.log('📈 Chart Dashboard - Trading context changed:', {
       selectedSymbol,
       selectedTimeframe,
-      rowLimit
+      rowLimit,
+      sortOrder
     });
-  }, [selectedSymbol, selectedTimeframe, rowLimit]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder]);
   const [chartData, setChartData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [chartType, setChartType] = useState('candlestick'); // candlestick, line, area
   const [timeRange, setTimeRange] = useState('all'); // all, 1d, 7d, 30d, 90d
+  
+  // Candle selection states
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState(null);
+  const [dragEnd, setDragEnd] = useState(null);
+  
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const selectionOverlayRef = useRef(null);
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
-      console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, timeRange); // Debug log
+      console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange); // Debug log
       fetchChartData();
     }
-  }, [selectedSymbol, selectedTimeframe, rowLimit, timeRange]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange]);
 
   // Initialize chart when data changes - FIXED: Ensures chart updates when symbol/timeframe changes
   useEffect(() => {
@@ -273,6 +285,27 @@ const TradingChartDashboard = ({
     };
   }, []);
 
+  // Handle global mouse events for selection
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        setDragStart(null);
+        setDragEnd(null);
+      }
+    };
+
+    if (isSelectionMode) {
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+      document.addEventListener('mouseleave', handleGlobalMouseUp);
+      
+      return () => {
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
+        document.removeEventListener('mouseleave', handleGlobalMouseUp);
+      };
+    }
+  }, [isSelectionMode, isDragging]);
+
   const fetchChartData = async () => {
     setLoading(true);
     setError(null);
@@ -302,7 +335,7 @@ const TradingChartDashboard = ({
       }
 
       const response = await fetch(
-        `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${limit}&order=asc&sort_by=timestamp`
+        `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${limit}&order=${sortOrder || 'desc'}&sort_by=timestamp`
       );
       
       if (!response.ok) {
@@ -311,6 +344,23 @@ const TradingChartDashboard = ({
       
       const data = await response.json();
       console.log('📊 Chart data fetched successfully:', data.data?.length, 'candles');
+      
+      // Charts always need data in ascending time order for proper rendering
+      // The sortOrder affects which data is fetched (newest vs oldest records)
+      // but the chart must display them chronologically
+      if (data.data && Array.isArray(data.data)) {
+        const sortedData = [...data.data];
+        sortedData.sort((a, b) => {
+          const aTime = new Date(a.timestamp);
+          const bTime = new Date(b.timestamp);
+          return aTime - bTime; // Always ascending for chart display
+        });
+        
+        data.data = sortedData;
+        console.log('📊 Chart data sorted for display - Sort preference:', sortOrder, 'Data range:', 
+          data.data[0]?.timestamp, 'to', data.data[data.data.length - 1]?.timestamp);
+      }
+      
       setChartData(data);
       setError(null);
       
@@ -481,6 +531,148 @@ const TradingChartDashboard = ({
     };
   };
 
+  // Candle selection functions
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+  };
+
+  const getCandleFromPosition = (x, containerRect) => {
+    if (!chartData?.data || !chartRef.current) return null;
+    
+    // Calculate relative position within chart
+    const relativeX = x - containerRect.left;
+    const chartWidth = containerRect.width;
+    
+    // Map position to candle index
+    const candleIndex = Math.floor((relativeX / chartWidth) * chartData.data.length);
+    
+    if (candleIndex >= 0 && candleIndex < chartData.data.length) {
+      return {
+        index: candleIndex,
+        candle: chartData.data[candleIndex]
+      };
+    }
+    
+    return null;
+  };
+
+  const selectCandle = (candle, index) => {
+    if (!candle) return;
+    
+    const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+    
+    // Check if already selected
+    const isSelected = selectedCandles.some(c => c.id === candleId);
+    
+    if (isSelected) {
+      removeSelectedCandle(candleId);
+    } else {
+      const candleWithMetadata = {
+        id: candleId,
+        symbol: selectedSymbol,
+        timeframe: selectedTimeframe,
+        timestamp: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        change: candle.close - candle.open,
+        changePercent: ((candle.close - candle.open) / candle.open) * 100,
+        sourceIndex: index
+      };
+      
+      addSelectedCandle(candleWithMetadata);
+    }
+  };
+
+  const selectCandlesInRange = (startX, endX, containerRect) => {
+    if (!chartData?.data) return;
+    
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    
+    const startCandle = getCandleFromPosition(minX, containerRect);
+    const endCandle = getCandleFromPosition(maxX, containerRect);
+    
+    if (!startCandle || !endCandle) return;
+    
+    const startIndex = Math.min(startCandle.index, endCandle.index);
+    const endIndex = Math.max(startCandle.index, endCandle.index);
+    
+    // Select all candles in range
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (i >= 0 && i < chartData.data.length) {
+        selectCandle(chartData.data[i], i);
+      }
+    }
+  };
+
+  const handleOverlayMouseDown = (e) => {
+    if (!isSelectionMode) return;
+    
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+    setDragEnd({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleOverlayMouseMove = (e) => {
+    if (!isSelectionMode || !isDragging) return;
+    
+    setDragEnd({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleOverlayMouseUp = (e) => {
+    if (!isSelectionMode || !isDragging) return;
+    
+    const containerRect = chartContainerRef.current?.getBoundingClientRect();
+    if (!containerRect || !dragStart) return;
+    
+    const distance = Math.abs(e.clientX - dragStart.x);
+    
+    if (distance < 5) {
+      // Single click - select individual candle
+      const candleData = getCandleFromPosition(e.clientX, containerRect);
+      if (candleData) {
+        selectCandle(candleData.candle, candleData.index);
+      }
+    } else {
+      // Drag selection - select range of candles
+      selectCandlesInRange(dragStart.x, e.clientX, containerRect);
+    }
+    
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+  };
+
+  const getSelectionBoxStyle = () => {
+    if (!isDragging || !dragStart || !dragEnd) return { display: 'none' };
+    
+    const containerRect = chartContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return { display: 'none' };
+    
+    const left = Math.min(dragStart.x, dragEnd.x) - containerRect.left;
+    const top = 0;
+    const width = Math.abs(dragEnd.x - dragStart.x);
+    const height = containerRect.height;
+    
+    return {
+      position: 'absolute',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      border: '2px dashed rgba(59, 130, 246, 0.5)',
+      pointerEvents: 'none',
+      zIndex: 10
+    };
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -559,11 +751,17 @@ const TradingChartDashboard = ({
         </div>
       </div>
 
-      {/* Data Selection & Controls - Using Consistent Component */}
-      <DataSelectionControls
+            {/* Data Selection & Controls - Using Consistent Component */}
+      <DataSelectionControls 
         handleRefresh={fetchChartData}
         isDarkMode={isDarkMode}
         dashboardType="chart"
+      />
+
+      {/* Selected Candles Panel */}
+      <SelectedCandlesPanel 
+        isDarkMode={isDarkMode} 
+        canSelectCandles={true}
       />
 
       {/* Chart-Specific Controls */}
@@ -574,7 +772,51 @@ const TradingChartDashboard = ({
           <h3 className={`text-lg font-semibold ${
             isDarkMode ? 'text-white' : 'text-gray-900'
           }`}>Chart Configuration</h3>
+          
+          {/* Selection Mode Toggle */}
+          <button
+            onClick={toggleSelectionMode}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+              isSelectionMode
+                ? isDarkMode
+                  ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                  : 'bg-blue-600 text-white ring-2 ring-blue-300'
+                : isDarkMode
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+            }`}
+          >
+            {isSelectionMode ? (
+              <>
+                <span>🎯</span>
+                <span>Selection Mode ON</span>
+              </>
+            ) : (
+              <>
+                <span>🕯️</span>
+                <span>Select Candles</span>
+              </>
+            )}
+          </button>
         </div>
+
+        {/* Selection Instructions */}
+        {isSelectionMode && (
+          <div className={`mb-4 p-3 rounded-lg border transition-colors duration-200 ${
+            isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+          }`}>
+            <div className="flex items-center mb-2">
+              <span className="text-lg mr-2">ℹ️</span>
+              <span className="font-medium">Selection Mode Active</span>
+            </div>
+            <div className="text-sm">
+              <p>• <strong>Click</strong> individual candles to select/deselect them</p>
+              <p>• <strong>Drag</strong> to create a rectangular selection (like Photoshop)</p>
+              <p>• Selected candles appear in the "Selected Candles" panel above</p>
+              <p>• Click "Selection Mode ON" to exit selection mode</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           <div>
@@ -750,6 +992,54 @@ const TradingChartDashboard = ({
             style={{ minHeight: '400px', position: 'relative' }}
           >
             {/* Chart is rendered programmatically via lightweight-charts */}
+            
+            {/* Selection Overlay */}
+            {isSelectionMode && (
+              <div
+                ref={selectionOverlayRef}
+                className="absolute inset-0 z-20"
+                style={{ 
+                  cursor: isSelectionMode ? 'crosshair' : 'default',
+                  backgroundColor: 'transparent'
+                }}
+                onMouseDown={handleOverlayMouseDown}
+                onMouseMove={handleOverlayMouseMove}
+                onMouseUp={handleOverlayMouseUp}
+                onMouseLeave={() => {
+                  if (isDragging) {
+                    setIsDragging(false);
+                    setDragStart(null);
+                    setDragEnd(null);
+                  }
+                }}
+              >
+                {/* Selection Rectangle */}
+                {isDragging && (
+                  <div
+                    className="absolute rounded"
+                    style={getSelectionBoxStyle()}
+                  />
+                )}
+                
+                {/* Selection Mode Indicator */}
+                <div className={`absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium ${
+                  isDarkMode 
+                    ? 'bg-blue-900/80 text-blue-200 border border-blue-600' 
+                    : 'bg-blue-100/80 text-blue-700 border border-blue-300'
+                }`}>
+                  🎯 Selection Mode
+                </div>
+                
+                {/* Selection Instructions */}
+                <div className={`absolute top-2 right-2 px-2 py-1 rounded text-xs ${
+                  isDarkMode 
+                    ? 'bg-gray-900/80 text-gray-300 border border-gray-600' 
+                    : 'bg-white/80 text-gray-600 border border-gray-300'
+                }`}>
+                  Click or drag to select candles
+                </div>
+              </div>
+            )}
           </div>
 
           {!chartData?.data && (

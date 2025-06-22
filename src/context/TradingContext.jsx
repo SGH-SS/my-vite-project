@@ -31,7 +31,8 @@ export const TradingProvider = ({ children }) => {
           showColumnFilters: parsed.showColumnFilters || false,
           showDebugInfo: parsed.showDebugInfo || false,
           selectedVectorType: parsed.selectedVectorType || DEFAULTS.VECTOR_TYPE,
-          vectorViewMode: parsed.vectorViewMode || 'heatmap'
+          vectorViewMode: parsed.vectorViewMode || 'heatmap',
+          selectedCandles: parsed.selectedCandles || []
         };
       }
     } catch (error) {
@@ -50,7 +51,8 @@ export const TradingProvider = ({ children }) => {
       showColumnFilters: false,
       showDebugInfo: false,
       selectedVectorType: DEFAULTS.VECTOR_TYPE,
-      vectorViewMode: 'heatmap'
+      vectorViewMode: 'heatmap',
+      selectedCandles: []
     };
   };
 
@@ -106,6 +108,28 @@ export const TradingProvider = ({ children }) => {
 
   const setVectorViewMode = (value) => {
     setState(prev => ({ ...prev, vectorViewMode: value }));
+  };
+
+  const setSelectedCandles = (value) => {
+    setState(prev => ({ ...prev, selectedCandles: value }));
+  };
+
+  const addSelectedCandle = (candle) => {
+    setState(prev => ({
+      ...prev,
+      selectedCandles: [...prev.selectedCandles.filter(c => c.id !== candle.id), candle]
+    }));
+  };
+
+  const removeSelectedCandle = (candleId) => {
+    setState(prev => ({
+      ...prev,
+      selectedCandles: prev.selectedCandles.filter(c => c.id !== candleId)
+    }));
+  };
+
+  const clearSelectedCandles = () => {
+    setState(prev => ({ ...prev, selectedCandles: [] }));
   };
 
   // Save to localStorage whenever state changes
@@ -166,6 +190,7 @@ export const TradingProvider = ({ children }) => {
     showDebugInfo: state.showDebugInfo,
     selectedVectorType: state.selectedVectorType,
     vectorViewMode: state.vectorViewMode,
+    selectedCandles: state.selectedCandles,
     
     // State setters
     setSelectedSymbol,
@@ -180,6 +205,10 @@ export const TradingProvider = ({ children }) => {
     setShowDebugInfo,
     setSelectedVectorType,
     setVectorViewMode,
+    setSelectedCandles,
+    addSelectedCandle,
+    removeSelectedCandle,
+    clearSelectedCandles,
     
     // Utility functions
     resetFilters: () => {
@@ -206,7 +235,8 @@ export const TradingProvider = ({ children }) => {
         showColumnFilters: false,
         showDebugInfo: false,
         selectedVectorType: DEFAULTS.VECTOR_TYPE,
-        vectorViewMode: 'heatmap'
+        vectorViewMode: 'heatmap',
+        selectedCandles: []
       });
     }
   };
