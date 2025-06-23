@@ -1,23 +1,18 @@
-- Candle selection functionality (select candles for further analysis)
+select caandle(s) -> find most similar candles in the group
 
 Data Dashboard :
 {
-    - When selecting a candle I should be able to click anywhere on the candle not just the box on the left
 
 } 
 
 Vector Dashboard :
 {
-    - Cant select candles
-    - Candles are numbered and hard to diffrentiate, numbered #1-#20?
-    - Can only load 20 candles at a time, not able to change 
-    - Clicking on a box in the vector visualization heatmap does not give more info on that box
+    - Clicking on a box in the vector visualization heatmap does not give more info on that box 
 
 } 
 
 Chart Dashboard :
 {
-    - no select candle ability
 
 } 
 

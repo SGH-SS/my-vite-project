@@ -3,6 +3,8 @@ import TradingChartDashboard from './Chart.jsx';
 import TradingLLMDashboard from './LLMDashboard.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
+import { useDateRanges } from '../hooks/useDateRanges';
+import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
 
 // Reusable InfoTooltip component
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -67,8 +69,115 @@ const DataSelectionControls = ({
   handleRefresh, 
   lastFetchInfo, 
   isDarkMode,
-  dashboardType = 'data' // 'data', 'vector', 'chart'
+  dashboardType = 'data', // 'data', 'vector', 'chart'
+  // Date range functionality
+  fetchMode,
+  setFetchMode,
+  dateRangeType,
+  setDateRangeType,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate
 }) => {
+
+  // Fetch available date ranges for current symbol/timeframe
+  const { dateRanges, loading: dateRangesLoading } = useDateRanges(selectedSymbol, selectedTimeframe);
+
+  // Local state for pending date changes (before applying)
+  const [pendingStartDate, setPendingStartDate] = useState(startDate);
+  const [pendingEndDate, setPendingEndDate] = useState(endDate);
+  const [pendingDateRangeType, setPendingDateRangeType] = useState(dateRangeType);
+
+  // Update pending states when actual values change (from other tabs or initial load)
+  useEffect(() => {
+    setPendingStartDate(startDate);
+    setPendingEndDate(endDate);
+    setPendingDateRangeType(dateRangeType);
+  }, [startDate, endDate, dateRangeType]);
+
+  // Auto-fill dates when date range type changes
+  useEffect(() => {
+    if (!dateRanges) return;
+    
+    switch (pendingDateRangeType) {
+      case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+        setPendingStartDate(dateRanges.earliest);
+        break;
+      case DATE_RANGE_TYPES.DATE_TO_LATEST:
+        setPendingEndDate(dateRanges.latest);
+        break;
+      case DATE_RANGE_TYPES.DATE_TO_DATE:
+        // Keep both dates as user set them, or use defaults if empty
+        if (!pendingStartDate) setPendingStartDate(dateRanges.earliest);
+        if (!pendingEndDate) setPendingEndDate(dateRanges.latest);
+        break;
+    }
+  }, [pendingDateRangeType, dateRanges]);
+
+  // Helper function to format date for input
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:MM
+  };
+
+  // Helper function to parse date from input
+  const parseDateFromInput = (inputValue) => {
+    if (!inputValue) return null;
+    return new Date(inputValue).toISOString();
+  };
+
+  // Helper functions for the new separate date/time inputs
+  const formatDatePart = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 10); // YYYY-MM-DD
+  };
+
+  const formatTimePart = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(11, 16); // HH:MM
+  };
+
+  const combineDateAndTime = (dateValue, timeValue) => {
+    if (!dateValue) return null;
+    const timeToUse = timeValue || '00:00';
+    return new Date(`${dateValue}T${timeToUse}:00.000Z`).toISOString();
+  };
+
+  // Check if there are pending changes
+  const hasPendingChanges = () => {
+    return (
+      pendingDateRangeType !== dateRangeType ||
+      pendingStartDate !== startDate ||
+      pendingEndDate !== endDate
+    );
+  };
+
+  // Apply pending changes
+  const applyDateChanges = () => {
+    if (setDateRangeType) setDateRangeType(pendingDateRangeType);
+    if (setStartDate) setStartDate(pendingStartDate);
+    if (setEndDate) setEndDate(pendingEndDate);
+  };
+
+  // Reset pending changes to current values
+  const resetDateChanges = () => {
+    setPendingDateRangeType(dateRangeType);
+    setPendingStartDate(startDate);
+    setPendingEndDate(endDate);
+  };
+
+  // Handle date range type change
+  const handleDateRangeTypeChange = (newType) => {
+    setPendingDateRangeType(newType);
+  };
+
+  // Determine if inputs should be disabled based on date range type
+  const isStartDateDisabled = pendingDateRangeType === DATE_RANGE_TYPES.EARLIEST_TO_DATE;
+  const isEndDateDisabled = pendingDateRangeType === DATE_RANGE_TYPES.DATE_TO_LATEST;
 
 
   return (
@@ -113,6 +222,55 @@ const DataSelectionControls = ({
             >
               🐛 Debug {showDebugInfo ? '▼' : '▶'}
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* Fetch Mode Toggle */}
+      <div className="mb-4">
+        <div className="flex items-center space-x-4">
+          <span className={`text-sm font-medium ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Fetch Mode:
+          </span>
+          <div className={`flex rounded-lg p-1 transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+          }`}>
+            <button
+              onClick={() => setFetchMode && setFetchMode(FETCH_MODES.LIMIT)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+                fetchMode === FETCH_MODES.LIMIT
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-white shadow-sm' 
+                    : 'bg-white text-gray-900 shadow-sm'
+                  : isDarkMode
+                    ? 'text-gray-300 hover:text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              📊 Record Limit
+            </button>
+            <button
+              onClick={() => setFetchMode && setFetchMode(FETCH_MODES.DATE_RANGE)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+                fetchMode === FETCH_MODES.DATE_RANGE
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-white shadow-sm' 
+                    : 'bg-white text-gray-900 shadow-sm'
+                  : isDarkMode
+                    ? 'text-gray-300 hover:text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              📅 Date Range
+            </button>
+          </div>
+          {dateRanges && (
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Available: {new Date(dateRanges.earliest).toLocaleDateString()} - {new Date(dateRanges.latest).toLocaleDateString()}
+              {dateRangesLoading && ' (loading...)'}
+            </div>
           )}
         </div>
       </div>
@@ -164,30 +322,55 @@ const DataSelectionControls = ({
           </select>
         </div>
 
-        <div>
-          <label className={`block text-sm font-medium mb-2 ${
-            isDarkMode ? 'text-gray-300' : 'text-gray-700'
-          }`}>
-            Data Limit
-          </label>
-          <select
-            value={rowLimit}
-            onChange={(e) => setRowLimit(Number(e.target.value))}
-            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-              isDarkMode 
-                ? 'border-gray-600 bg-gray-700 text-white' 
-                : 'border-gray-300 bg-white text-gray-900'
-            }`}
-          >
-            <option value={25}>25 records</option>
-            <option value={50}>50 records</option>
-            <option value={100}>100 records</option>
-            <option value={250}>250 records</option>
-            <option value={500}>500 records</option>
-            <option value={1000}>1000 records</option>
-            <option value={2000}>2000 records</option>
-          </select>
-        </div>
+        {(!fetchMode || fetchMode === FETCH_MODES.LIMIT) && (
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Data Limit
+            </label>
+            <select
+              value={rowLimit}
+              onChange={(e) => setRowLimit(Number(e.target.value))}
+              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                isDarkMode 
+                  ? 'border-gray-600 bg-gray-700 text-white' 
+                  : 'border-gray-300 bg-white text-gray-900'
+              }`}
+            >
+              <option value={25}>25 records</option>
+              <option value={50}>50 records</option>
+              <option value={100}>100 records</option>
+              <option value={250}>250 records</option>
+              <option value={500}>500 records</option>
+              <option value={1000}>1000 records</option>
+              <option value={2000}>2000 records</option>
+            </select>
+          </div>
+        )}
+
+        {fetchMode === FETCH_MODES.DATE_RANGE && (
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Date Range Type
+            </label>
+            <select
+              value={pendingDateRangeType || DATE_RANGE_TYPES.EARLIEST_TO_DATE}
+              onChange={(e) => handleDateRangeTypeChange(e.target.value)}
+              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                isDarkMode 
+                  ? 'border-gray-600 bg-gray-700 text-white' 
+                  : 'border-gray-300 bg-white text-gray-900'
+              }`}
+            >
+              <option value={DATE_RANGE_TYPES.EARLIEST_TO_DATE}>📅 Earliest to Date</option>
+              <option value={DATE_RANGE_TYPES.DATE_TO_DATE}>📅 Date to Date</option>
+              <option value={DATE_RANGE_TYPES.DATE_TO_LATEST}>📅 Date to Latest</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center mb-2">
@@ -352,6 +535,200 @@ const DataSelectionControls = ({
           </div>
         </div>
       )}
+
+      {/* Date Range Inputs */}
+      {fetchMode === FETCH_MODES.DATE_RANGE && (
+        <div className={`mt-4 p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <h4 className={`text-md font-medium mb-3 ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>Date Range Configuration</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Start Date - Always visible */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Start Date {isStartDateDisabled && (
+                  <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    (Auto-filled: Earliest)
+                  </span>
+                )}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formatDatePart(pendingStartDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(e.target.value, formatTimePart(pendingStartDate));
+                      setPendingStartDate(newDate);
+                    }}
+                    disabled={isStartDateDisabled}
+                    min={dateRanges ? formatDatePart(dateRanges.earliest) : ''}
+                    max={dateRanges ? formatDatePart(dateRanges.latest) : ''}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isStartDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formatTimePart(pendingStartDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(formatDatePart(pendingStartDate), e.target.value);
+                      setPendingStartDate(newDate);
+                    }}
+                    disabled={isStartDateDisabled}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isStartDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+              </div>
+              {dateRanges && (
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Available from: {new Date(dateRanges.earliest).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+
+            {/* End Date - Always visible */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                End Date {isEndDateDisabled && (
+                  <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    (Auto-filled: Latest)
+                  </span>
+                )}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formatDatePart(pendingEndDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(e.target.value, formatTimePart(pendingEndDate));
+                      setPendingEndDate(newDate);
+                    }}
+                    disabled={isEndDateDisabled}
+                    min={dateRanges ? formatDatePart(dateRanges.earliest) : ''}
+                    max={dateRanges ? formatDatePart(dateRanges.latest) : ''}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isEndDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formatTimePart(pendingEndDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(formatDatePart(pendingEndDate), e.target.value);
+                      setPendingEndDate(newDate);
+                    }}
+                    disabled={isEndDateDisabled}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isEndDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+              </div>
+              {dateRanges && (
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Available until: {new Date(dateRanges.latest).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Apply/Reset buttons */}
+          <div className="flex justify-end gap-2 mt-4">
+            {hasPendingChanges() && (
+              <button
+                onClick={resetDateChanges}
+                className={`px-3 py-2 text-sm rounded-md transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Reset
+              </button>
+            )}
+            <button
+              onClick={applyDateChanges}
+              disabled={!hasPendingChanges()}
+              className={`px-4 py-2 text-sm rounded-md transition-colors duration-200 ${
+                !hasPendingChanges()
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-gray-500 cursor-not-allowed' 
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : isDarkMode 
+                    ? 'bg-blue-600 text-white hover:bg-blue-500' 
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`}
+            >
+              {!hasPendingChanges() ? 'No Changes' : 'Apply Date Range'}
+            </button>
+          </div>
+
+          {/* Current applied range info */}
+          {(startDate || endDate) && (
+            <div className={`mt-3 pt-3 border-t text-xs ${
+              isDarkMode ? 'border-gray-600 text-gray-400' : 'border-gray-300 text-gray-500'
+            }`}>
+              <div className="font-medium mb-1">Currently Applied:</div>
+              <div>
+                {startDate && `From: ${new Date(startDate).toLocaleString()}`}
+                {startDate && endDate && ' • '}
+                {endDate && `To: ${new Date(endDate).toLocaleString()}`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -374,7 +751,19 @@ const TradingVectorDashboard = ({
     vectorViewMode,
     setVectorViewMode,
     sortOrder,
-    setSortOrder
+    setSortOrder,
+    selectedCandles,
+    addSelectedCandle,
+    removeSelectedCandle,
+    // Date range functionality
+    fetchMode,
+    setFetchMode,
+    dateRangeType,
+    setDateRangeType,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate
   } = useTrading();
   const [vectorData, setVectorData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -410,18 +799,79 @@ const TradingVectorDashboard = ({
     if (selectedSymbol && selectedTimeframe) {
       fetchVectorData();
     }
-  }, [selectedSymbol, selectedTimeframe, rowLimit]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, fetchMode, dateRangeType, startDate, endDate]);
 
   const fetchVectorData = async () => {
     setLoading(true);
+    console.log(`🚀 fetchVectorData called - Symbol: ${selectedSymbol}, Timeframe: ${selectedTimeframe}, RowLimit: ${rowLimit}, SortOrder: ${sortOrder}, FetchMode: ${fetchMode}, DateRangeType: ${dateRangeType}`);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}&include_vectors=true`
-      );
+      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
+      let queryParams = new URLSearchParams();
+
+      if (fetchMode === FETCH_MODES.DATE_RANGE) {
+        // Use date range parameters
+        switch (dateRangeType) {
+          case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_DATE:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_LATEST:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            break;
+        }
+        // Set a reasonable limit to avoid overwhelming the UI
+        queryParams.append('limit', '10000');
+      } else {
+        // Use record limit mode
+        queryParams.append('limit', rowLimit.toString());
+      }
+
+      // Add sorting parameters (this was missing!)
+      queryParams.append('order', sortOrder);
+      queryParams.append('sort_by', 'timestamp');
+      
+      // Include vectors
+      queryParams.append('include_vectors', 'true');
+
+      const finalUrl = `${url}?${queryParams.toString()}`;
+      console.log('Vector API URL:', finalUrl);
+      
+      const response = await fetch(finalUrl);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
+      
+      // Apply client-side sorting to ensure proper ordering (same as main data fetch)
+      if (data.data && Array.isArray(data.data)) {
+        let sortedData = [...data.data];
+        
+        console.log(`🔀 Applying client-side sorting to vector data by timestamp (${sortOrder})...`);
+        
+        sortedData.sort((a, b) => {
+          const aVal = new Date(a.timestamp);
+          const bVal = new Date(b.timestamp);
+          
+          if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+          if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+        
+        data.data = sortedData;
+        console.log(`✅ Vector data sorting complete. Data range: ${data.data.length > 0 ? `${new Date(data.data[0].timestamp).toLocaleDateString()} to ${new Date(data.data[data.data.length - 1].timestamp).toLocaleDateString()}` : 'No data'}`);
+      }
+      
       setVectorData(data);
       
       // Check which vector types are available
@@ -507,10 +957,11 @@ const TradingVectorDashboard = ({
     if (!vectorData?.data) return null;
 
     try {
-      const vectors = vectorData.data
+      // Use the full data up to the row limit instead of hardcoding 20
+      const dataToShow = vectorData.data.slice(0, rowLimit);
+      const vectors = dataToShow
         .map(row => row[selectedVectorType])
-        .filter(v => v && Array.isArray(v))
-        .slice(0, 20); // Show first 20 for visibility
+        .filter(v => v && Array.isArray(v));
 
       if (vectors.length === 0) return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No vector data available</div>;
 
@@ -561,6 +1012,32 @@ const TradingVectorDashboard = ({
       const globalMin = Math.min(...allValues);
       const globalMax = Math.max(...allValues);
       
+      // Helper function to handle candle selection
+      const handleCandleSelect = (candle, rowIndex) => {
+        const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+        const isSelected = selectedCandles.some(c => c.id === candleId);
+        
+        if (isSelected) {
+          removeSelectedCandle(candleId);
+        } else {
+          const candleWithMetadata = {
+            id: candleId,
+            symbol: selectedSymbol,
+            timeframe: selectedTimeframe,
+            timestamp: candle.timestamp,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+            change: candle.close - candle.open,
+            changePercent: ((candle.close - candle.open) / candle.open) * 100,
+            sourceIndex: rowIndex
+          };
+          addSelectedCandle(candleWithMetadata);
+        }
+      };
+      
       return (
         <div className="space-y-2">
           {/* Color scale legend with info tooltip */}
@@ -590,22 +1067,26 @@ const TradingVectorDashboard = ({
                 <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>High ({globalMax.toFixed(2)})</span>
               </div>
             </div>
-            <InfoTooltip id="heatmap-info" content={heatmapInfo.content} isDarkMode={isDarkMode} />
+            <div className="text-xs">
+              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                Showing {dataToShow.length} of {vectorData.data.length} candles • Click rows to select
+              </span>
+            </div>
           </div>
           
           {/* Dimension headers */}
           <div className="flex items-center space-x-1 text-xs">
             <div className="flex items-center">
-            <div className={`w-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Row</div>
+            <div className={`w-24 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Candle Info</div>
               <InfoTooltip id="rows-explanation" content={
                 <div>
-                  <p className="font-semibold mb-2">📋 Rows</p>
+                  <p className="font-semibold mb-2">📋 Candle Information</p>
                   <p className="mb-2">Each row represents one trading period (candle):</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li><strong>Row #1:</strong> Most recent period (if sorted newest first)</li>
-                    <li><strong>Order:</strong> Depends on your sort setting in Data Dashboard</li>
-                    <li><strong>Data:</strong> Each row contains OHLC(V) data for that time period</li>
-                    <li><strong>Hover:</strong> Click any cell to see exact timestamp and values</li>
+                    <li><strong>Timestamp:</strong> When the candle occurred</li>
+                    <li><strong>Close Price:</strong> Final price for that period</li>
+                    <li><strong>Selection:</strong> Click any row to add/remove from selected candles</li>
+                    <li><strong>Order:</strong> Depends on your sort setting in controls</li>
                   </ul>
                 </div>
               } isDarkMode={isDarkMode} />
@@ -636,31 +1117,56 @@ const TradingVectorDashboard = ({
           
           {/* Vector heatmap */}
           <div className="space-y-1">
-            {vectors.map((vector, rowIndex) => (
-              <div key={rowIndex} className="flex items-center space-x-1">
-                <div className={`w-12 text-xs font-mono ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  #{rowIndex + 1}
+            {dataToShow.map((candle, rowIndex) => {
+              const vector = candle[selectedVectorType];
+              if (!vector || !Array.isArray(vector)) return null;
+              
+              const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+              const isSelected = selectedCandles.some(c => c.id === candleId);
+              
+              return (
+                <div 
+                  key={rowIndex} 
+                  className={`flex items-center space-x-1 cursor-pointer rounded transition-all duration-200 hover:shadow-md ${
+                    isSelected 
+                      ? isDarkMode 
+                        ? 'bg-blue-900/40 border-l-4 border-blue-400 pl-2' 
+                        : 'bg-blue-50 border-l-4 border-blue-500 pl-2'
+                      : isDarkMode 
+                        ? 'hover:bg-gray-700 pl-2' 
+                        : 'hover:bg-gray-50 pl-2'
+                  }`}
+                  onClick={() => handleCandleSelect(candle, rowIndex)}
+                  title={`Click to ${isSelected ? 'deselect' : 'select'} this candle for analysis`}
+                >
+                  <div className={`w-24 text-xs font-mono ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className="truncate">{new Date(candle.timestamp).toLocaleDateString()}</div>
+                    <div className="text-xs opacity-75">${candle.close?.toFixed(2)}</div>
+                  </div>
+                  <div className="flex space-x-0.5">
+                    {vector.slice(0, maxDimensions).map((value, dimIndex) => {
+                      const color = getColorFromValue(value, globalMin, globalMax);
+                      return (
+                        <div
+                          key={dimIndex}
+                          className="w-8 h-8 rounded-sm border border-gray-300 hover:scale-110 transition-transform"
+                          style={{ backgroundColor: color }}
+                          title={`${new Date(candle.timestamp).toLocaleString()}\nClose: $${candle.close?.toFixed(2)}\nDim ${dimIndex}: ${value.toFixed(4)}\nRange: ${globalMin.toFixed(2)} to ${globalMax.toFixed(2)}`}
+                        />
+                      );
+                    })}
+                  </div>
+                  {isSelected && (
+                    <div className="ml-2 text-blue-500 text-xs">✓ Selected</div>
+                  )}
                 </div>
-                <div className="flex space-x-0.5">
-                  {vector.slice(0, maxDimensions).map((value, dimIndex) => {
-                    const color = getColorFromValue(value, globalMin, globalMax);
-                    return (
-                      <div
-                        key={dimIndex}
-                        className="w-8 h-8 rounded-sm border border-gray-300 cursor-pointer hover:scale-110 transition-transform"
-                        style={{ backgroundColor: color }}
-                        title={`Row ${rowIndex + 1}, Dim ${dimIndex}: ${value.toFixed(4)}\nRange: ${globalMin.toFixed(2)} to ${globalMax.toFixed(2)}`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           
-          {vectors.length === 20 && vectorData.data.length > 20 && (
+          {dataToShow.length < vectorData.data.length && (
             <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} text-center mt-2`}>
-              Showing first 20 of {vectorData.data.length} vectors
+              Showing {dataToShow.length} of {vectorData.data.length} vectors (adjust "Data Limit" to show more)
             </div>
           )}
         </div>
@@ -852,8 +1358,10 @@ const TradingVectorDashboard = ({
                     : 'bg-white border-gray-300'
                 }`}
               >
-                {vectorData.data.slice(0, 20).map((_, i) => (
-                  <option key={i} value={i}>Candle #{i + 1}</option>
+                {vectorData.data.slice(0, Math.min(rowLimit, vectorData.data.length)).map((candle, i) => (
+                  <option key={i} value={i}>
+                    {new Date(candle.timestamp).toLocaleDateString()} (${candle.close?.toFixed(2)})
+                  </option>
                 ))}
               </select>
               <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>vs</span>
@@ -866,8 +1374,10 @@ const TradingVectorDashboard = ({
                     : 'bg-white border-gray-300'
                 }`}
               >
-                {vectorData.data.slice(0, 20).map((_, i) => (
-                  <option key={i} value={i}>Candle #{i + 1}</option>
+                {vectorData.data.slice(0, Math.min(rowLimit, vectorData.data.length)).map((candle, i) => (
+                  <option key={i} value={i}>
+                    {new Date(candle.timestamp).toLocaleDateString()} (${candle.close?.toFixed(2)})
+                  </option>
                 ))}
               </select>
             </div>
@@ -1187,12 +1697,21 @@ const TradingVectorDashboard = ({
           handleRefresh={fetchVectorData}
           isDarkMode={isDarkMode}
           dashboardType="vector"
+          // Date range props
+          fetchMode={fetchMode}
+          setFetchMode={setFetchMode}
+          dateRangeType={dateRangeType}
+          setDateRangeType={setDateRangeType}
+          startDate={startDate}
+          setStartDate={setStartDate}
+          endDate={endDate}
+          setEndDate={setEndDate}
         />
 
         {/* Selected Candles Panel */}
         <SelectedCandlesPanel 
           isDarkMode={isDarkMode} 
-          canSelectCandles={false}
+          canSelectCandles={true}
         />
 
       {/* Vector Type Selector */}
@@ -1641,7 +2160,16 @@ const TradingDashboard = () => {
     selectedCandles,
     addSelectedCandle,
     removeSelectedCandle,
-    clearSelectedCandles
+    clearSelectedCandles,
+    // Date range functionality
+    fetchMode,
+    setFetchMode,
+    dateRangeType,
+    setDateRangeType,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate
   } = useTrading();
 
   // Debug: Log context values to check synchronization
@@ -1700,7 +2228,7 @@ const TradingDashboard = () => {
     if (selectedSymbol && selectedTimeframe) {
       fetchTradingData();
     }
-  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn, currentPage]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, sortColumn, currentPage, fetchMode, dateRangeType, startDate, endDate]);
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
@@ -1770,71 +2298,75 @@ const TradingDashboard = () => {
 
   const fetchTradingData = async () => {
     setLoading(true);
-    console.log(`🚀 fetchTradingData called - Page: ${currentPage}, Symbol: ${selectedSymbol}, Timeframe: ${selectedTimeframe}, RowLimit: ${rowLimit}, SortOrder: ${sortOrder}`);
+    console.log(`🚀 fetchTradingData called - Page: ${currentPage}, Symbol: ${selectedSymbol}, Timeframe: ${selectedTimeframe}, RowLimit: ${rowLimit}, SortOrder: ${sortOrder}, FetchMode: ${fetchMode}, DateRangeType: ${dateRangeType}`);
     try {
-      // Strategy: For oldest data, we need to get the very first records from the database
-      // For newest data, we get the most recent records
-      
-      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}`;
+      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
+      let queryParams = new URLSearchParams();
       let offset = 0;
-      
-      if (sortOrder === 'asc') {
-        // For ASCENDING (oldest first): Get from the very beginning of the dataset
-        offset = (currentPage - 1) * rowLimit;
-        // Try multiple strategies to get oldest data
-        url += `&offset=${offset}&order=asc&sort_by=timestamp`;
-        
-        // Alternative: Try to explicitly request oldest data
-        const oldestUrl = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${rowLimit}&offset=${offset}&order=asc&sort_by=timestamp&from_start=true`;
-        
-        console.log(`🟢 ASCENDING: Requesting OLDEST ${rowLimit} records starting from record ${offset + 1}`);
-        console.log('Trying oldest-first URL:', oldestUrl);
-        
-        // Try the explicit oldest-first URL first
-        try {
-          const response = await fetch(oldestUrl);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const text = await response.text();
-          if (!text) {
-            throw new Error('Empty response from server');
-          }
-          var data = JSON.parse(text);
-          var fetchUrl = oldestUrl;
-        } catch (e) {
-          // Fallback to standard URL
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const text = await response.text();
-          if (!text) {
-            throw new Error('Empty response from server');
-          }
-          var data = JSON.parse(text);
-          var fetchUrl = url;
+
+      if (fetchMode === FETCH_MODES.DATE_RANGE) {
+        // Use date range parameters
+        switch (dateRangeType) {
+          case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_DATE:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_LATEST:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            break;
         }
-        
-      } else {
-        // For DESCENDING (newest first): Get the most recent data
-        offset = (currentPage - 1) * rowLimit;
-        url += `&offset=${offset}&order=desc&sort_by=timestamp`;
-        
-        console.log(`🔵 DESCENDING: Requesting NEWEST ${rowLimit} records starting from record ${offset + 1}`);
-        console.log('API URL:', url);
-        
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const text = await response.text();
-        if (!text) {
-          throw new Error('Empty response from server');
-        }
-        var data = JSON.parse(text);
-        var fetchUrl = url;
-      }
+        // Set a reasonable limit to avoid overwhelming the UI
+        queryParams.append('limit', '10000');
+        // For date range mode, we don't use pagination offset
+        offset = 0;
+             } else {
+         // Use record limit mode (original logic)
+         queryParams.append('limit', rowLimit.toString());
+         
+         // Strategy: For oldest data, we need to get the very first records from the database
+         // For newest data, we get the most recent records
+         offset = (currentPage - 1) * rowLimit;
+       }
+
+              // Add offset for pagination (only in record limit mode)
+       if (fetchMode !== FETCH_MODES.DATE_RANGE) {
+         queryParams.append('offset', offset.toString());
+       }
+
+       // Add sorting parameters
+       queryParams.append('order', sortOrder);
+       queryParams.append('sort_by', sortColumn);
+
+       const finalUrl = `${url}?${queryParams.toString()}`;
+       
+       if (sortOrder === 'asc') {
+         console.log(`🟢 ASCENDING: Requesting OLDEST records`);
+       } else {
+         console.log(`🔵 DESCENDING: Requesting NEWEST records`);
+       }
+       console.log('API URL:', finalUrl);
+       
+       const response = await fetch(finalUrl);
+       if (!response.ok) {
+         throw new Error(`HTTP error! status: ${response.status}`);
+       }
+       const text = await response.text();
+       if (!text) {
+         throw new Error('Empty response from server');
+       }
+       var data = JSON.parse(text);
+       var fetchUrl = finalUrl;
       
       // If we're on ascending and still getting recent data, try a different approach
       if (sortOrder === 'asc' && data.data && data.data.length > 0) {
@@ -2502,6 +3034,15 @@ const TradingDashboard = () => {
           lastFetchInfo={lastFetchInfo}
           isDarkMode={isDarkMode}
           dashboardType="data"
+          // Date range props
+          fetchMode={fetchMode}
+          setFetchMode={setFetchMode}
+          dateRangeType={dateRangeType}
+          setDateRangeType={setDateRangeType}
+          startDate={startDate}
+          setStartDate={setStartDate}
+          endDate={endDate}
+          setEndDate={setEndDate}
         />
 
         {/* Selected Candles Panel */}

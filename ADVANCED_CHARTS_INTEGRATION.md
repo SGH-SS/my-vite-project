@@ -376,8 +376,8 @@ const ChartDashboard = () => {
 
 
 ## Other Options
-TechanJS Financial charting on D3
-TechanJS GitHub Repository
-Chart.js Financial Charting
-Plotly.js Financial Charts
-AG Charts Licensing Details
+1. TechanJS Financial charting on D3
+2. TechanJS GitHub Repository
+3. Chart.js Financial Charting
+4. Plotly.js Financial Charts
+5. AG Charts Licensing Details

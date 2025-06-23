@@ -24,7 +24,20 @@ export const TIMEFRAMES = {
 };
 
 // Row Limit Options
-export const ROW_LIMITS = [25, 50, 100, 250, 500];
+export const ROW_LIMITS = [25, 50, 100, 250, 500, 1000, 2000];
+
+// Fetch Mode Options
+export const FETCH_MODES = {
+  LIMIT: 'limit',
+  DATE_RANGE: 'date_range'
+};
+
+// Date Range Types
+export const DATE_RANGE_TYPES = {
+  EARLIEST_TO_DATE: 'earliest_to_date',
+  DATE_TO_DATE: 'date_to_date',
+  DATE_TO_LATEST: 'date_to_latest'
+};
 
 // Vector Type Definitions
 export const VECTOR_TYPES = [
@@ -98,5 +111,9 @@ export const DEFAULTS = {
   SORT_ORDER: 'desc',
   SORT_COLUMN: 'timestamp',
   VECTOR_TYPE: 'raw_ohlc_vec',
-  DASHBOARD_MODE: 'data'
+  DASHBOARD_MODE: 'data',
+  FETCH_MODE: 'limit',
+  DATE_RANGE_TYPE: 'earliest_to_date',
+  START_DATE: null,
+  END_DATE: null
 }; 

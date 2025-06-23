@@ -1,18 +1,49 @@
 ups n downs, lefts n rights, waves of groom n doom, stay lasered
 
-post addy day grind
-
-starter prompt:
-suggest some improvements based on where I am currently trying to go (basic summary: pg admin but better)
 
 
 
------------------------
+**vy day grind plan**
 
 
-lets start with adding lightweight charts ontop of the data we already have (obviously a candle chart with our ohlc data) 
+warm up:
+-data limit doesnt exist for date range on vectors
+
+----
+knowledge:
+-get vectors made on single candle z score normilization 
+   ( current vectors are based off Global mean (μ) )
+&&
+-understand current z score vector system Global mean (μ), how to integrate fluid global mean values based variable amount of data 
 
 
--I want to look at a group of candles and find groups of candles that look most similar to that group, (group of candles is defined as 1-x)
+-calculate some yourself...fuck all
 
--vector visualization
+(combo knowledge - how to merge global mean vectors and single candle vectors in one strategy)
+
+----
+do ->
+
+backend for similarity:
+- make a backend similarity check using global mean vectors
+- make a backend similarity check using single candle vectors
+
+how do I make a similarity check that incorporates both my global mean vectors (norm_ohlc) and my single candle vecotrs (iso_ohlc)
+
+
+
+
+
+
+
+
+
+
+
+
+-----------------------------------
+train model on current 768s for simple chart marking ability 
++
+after that add svg visibility so the model can see the chart
+
+GET ALL THE BS DELETED

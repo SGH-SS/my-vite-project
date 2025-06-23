@@ -32,7 +32,13 @@ export const TradingProvider = ({ children }) => {
           showDebugInfo: parsed.showDebugInfo || false,
           selectedVectorType: parsed.selectedVectorType || DEFAULTS.VECTOR_TYPE,
           vectorViewMode: parsed.vectorViewMode || 'heatmap',
-          selectedCandles: parsed.selectedCandles || []
+          selectedCandles: parsed.selectedCandles || [],
+          // Date range functionality
+          fetchMode: parsed.fetchMode || DEFAULTS.FETCH_MODE,
+          dateRangeType: parsed.dateRangeType || DEFAULTS.DATE_RANGE_TYPE,
+          startDate: parsed.startDate || DEFAULTS.START_DATE,
+          endDate: parsed.endDate || DEFAULTS.END_DATE,
+          availableDateRanges: parsed.availableDateRanges || {}
         };
       }
     } catch (error) {
@@ -52,7 +58,13 @@ export const TradingProvider = ({ children }) => {
       showDebugInfo: false,
       selectedVectorType: DEFAULTS.VECTOR_TYPE,
       vectorViewMode: 'heatmap',
-      selectedCandles: []
+      selectedCandles: [],
+      // Date range functionality
+      fetchMode: DEFAULTS.FETCH_MODE,
+      dateRangeType: DEFAULTS.DATE_RANGE_TYPE,
+      startDate: DEFAULTS.START_DATE,
+      endDate: DEFAULTS.END_DATE,
+      availableDateRanges: {}
     };
   };
 
@@ -71,8 +83,6 @@ export const TradingProvider = ({ children }) => {
   const setRowLimit = (value) => {
     setState(prev => ({ ...prev, rowLimit: value, currentPage: 1 }));
   };
-
-
 
   const setSortOrder = (value) => {
     setState(prev => ({ ...prev, sortOrder: value, currentPage: 1 }));
@@ -130,6 +140,27 @@ export const TradingProvider = ({ children }) => {
 
   const clearSelectedCandles = () => {
     setState(prev => ({ ...prev, selectedCandles: [] }));
+  };
+
+  // Date range setters
+  const setFetchMode = (value) => {
+    setState(prev => ({ ...prev, fetchMode: value, currentPage: 1 }));
+  };
+
+  const setDateRangeType = (value) => {
+    setState(prev => ({ ...prev, dateRangeType: value, currentPage: 1 }));
+  };
+
+  const setStartDate = (value) => {
+    setState(prev => ({ ...prev, startDate: value, currentPage: 1 }));
+  };
+
+  const setEndDate = (value) => {
+    setState(prev => ({ ...prev, endDate: value, currentPage: 1 }));
+  };
+
+  const setAvailableDateRanges = (value) => {
+    setState(prev => ({ ...prev, availableDateRanges: value }));
   };
 
   // Save to localStorage whenever state changes
@@ -192,6 +223,13 @@ export const TradingProvider = ({ children }) => {
     vectorViewMode: state.vectorViewMode,
     selectedCandles: state.selectedCandles,
     
+    // Date range state values
+    fetchMode: state.fetchMode,
+    dateRangeType: state.dateRangeType,
+    startDate: state.startDate,
+    endDate: state.endDate,
+    availableDateRanges: state.availableDateRanges,
+    
     // State setters
     setSelectedSymbol,
     setSelectedTimeframe,
@@ -210,6 +248,13 @@ export const TradingProvider = ({ children }) => {
     removeSelectedCandle,
     clearSelectedCandles,
     
+    // Date range setters
+    setFetchMode,
+    setDateRangeType,
+    setStartDate,
+    setEndDate,
+    setAvailableDateRanges,
+    
     // Utility functions
     resetFilters: () => {
       setState(prev => ({
@@ -218,7 +263,12 @@ export const TradingProvider = ({ children }) => {
         selectedSearchColumn: 'all',
         sortOrder: DEFAULTS.SORT_ORDER,
         showColumnFilters: false,
-        currentPage: 1
+        currentPage: 1,
+        // Reset date range to defaults
+        fetchMode: DEFAULTS.FETCH_MODE,
+        dateRangeType: DEFAULTS.DATE_RANGE_TYPE,
+        startDate: DEFAULTS.START_DATE,
+        endDate: DEFAULTS.END_DATE
       }));
     },
     
@@ -236,7 +286,13 @@ export const TradingProvider = ({ children }) => {
         showDebugInfo: false,
         selectedVectorType: DEFAULTS.VECTOR_TYPE,
         vectorViewMode: 'heatmap',
-        selectedCandles: []
+        selectedCandles: [],
+        // Date range functionality
+        fetchMode: DEFAULTS.FETCH_MODE,
+        dateRangeType: DEFAULTS.DATE_RANGE_TYPE,
+        startDate: DEFAULTS.START_DATE,
+        endDate: DEFAULTS.END_DATE,
+        availableDateRanges: {}
       });
     }
   };

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 // Import lightweight-charts v5.0 - install with: npm install lightweight-charts
 import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType } from 'lightweight-charts';
 import { useTrading } from '../context/TradingContext';
+import { useDateRanges } from '../hooks/useDateRanges';
+import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 
 // Reusable InfoTooltip component (shared across dashboards)
@@ -61,8 +63,116 @@ const DataSelectionControls = ({
     rowLimit,
     setRowLimit,
     sortOrder,
-    setSortOrder
+    setSortOrder,
+    // Date range functionality
+    fetchMode,
+    setFetchMode,
+    dateRangeType,
+    setDateRangeType,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate
   } = useTrading();
+
+  // Fetch available date ranges for current symbol/timeframe
+  const { dateRanges, loading: dateRangesLoading } = useDateRanges(selectedSymbol, selectedTimeframe);
+
+  // Local state for pending date changes (before applying)
+  const [pendingStartDate, setPendingStartDate] = useState(startDate);
+  const [pendingEndDate, setPendingEndDate] = useState(endDate);
+  const [pendingDateRangeType, setPendingDateRangeType] = useState(dateRangeType);
+
+  // Update pending states when actual values change (from other tabs or initial load)
+  useEffect(() => {
+    setPendingStartDate(startDate);
+    setPendingEndDate(endDate);
+    setPendingDateRangeType(dateRangeType);
+  }, [startDate, endDate, dateRangeType]);
+
+  // Auto-fill dates when date range type changes
+  useEffect(() => {
+    if (!dateRanges) return;
+    
+    switch (pendingDateRangeType) {
+      case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+        setPendingStartDate(dateRanges.earliest);
+        break;
+      case DATE_RANGE_TYPES.DATE_TO_LATEST:
+        setPendingEndDate(dateRanges.latest);
+        break;
+      case DATE_RANGE_TYPES.DATE_TO_DATE:
+        // Keep both dates as user set them, or use defaults if empty
+        if (!pendingStartDate) setPendingStartDate(dateRanges.earliest);
+        if (!pendingEndDate) setPendingEndDate(dateRanges.latest);
+        break;
+    }
+  }, [pendingDateRangeType, dateRanges]);
+
+  // Helper function to format date for input
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:MM
+  };
+
+  // Helper function to parse date from input
+  const parseDateFromInput = (inputValue) => {
+    if (!inputValue) return null;
+    return new Date(inputValue).toISOString();
+  };
+
+  // Helper functions for the new separate date/time inputs
+  const formatDatePart = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 10); // YYYY-MM-DD
+  };
+
+  const formatTimePart = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(11, 16); // HH:MM
+  };
+
+  const combineDateAndTime = (dateValue, timeValue) => {
+    if (!dateValue) return null;
+    const timeToUse = timeValue || '00:00';
+    return new Date(`${dateValue}T${timeToUse}:00.000Z`).toISOString();
+  };
+
+  // Check if there are pending changes
+  const hasPendingChanges = () => {
+    return (
+      pendingDateRangeType !== dateRangeType ||
+      pendingStartDate !== startDate ||
+      pendingEndDate !== endDate
+    );
+  };
+
+  // Apply pending changes
+  const applyDateChanges = () => {
+    if (setDateRangeType) setDateRangeType(pendingDateRangeType);
+    if (setStartDate) setStartDate(pendingStartDate);
+    if (setEndDate) setEndDate(pendingEndDate);
+  };
+
+  // Reset pending changes to current values
+  const resetDateChanges = () => {
+    setPendingDateRangeType(dateRangeType);
+    setPendingStartDate(startDate);
+    setPendingEndDate(endDate);
+  };
+
+  // Handle date range type change
+  const handleDateRangeTypeChange = (newType) => {
+    setPendingDateRangeType(newType);
+  };
+
+  // Determine if inputs should be disabled based on date range type
+  const isStartDateDisabled = pendingDateRangeType === DATE_RANGE_TYPES.EARLIEST_TO_DATE;
+  const isEndDateDisabled = pendingDateRangeType === DATE_RANGE_TYPES.DATE_TO_LATEST;
+
   return (
     <div className={`rounded-lg shadow-md p-6 mb-8 transition-colors duration-200 ${
       isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -82,6 +192,55 @@ const DataSelectionControls = ({
           >
             🔄 Refresh {dashboardType === 'chart' ? 'Chart' : dashboardType === 'vector' ? 'Vectors' : 'Data'}
           </button>
+        </div>
+      </div>
+
+      {/* Fetch Mode Toggle */}
+      <div className="mb-4">
+        <div className="flex items-center space-x-4">
+          <span className={`text-sm font-medium ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Fetch Mode:
+          </span>
+          <div className={`flex rounded-lg p-1 transition-colors duration-200 ${
+            isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+          }`}>
+            <button
+              onClick={() => setFetchMode(FETCH_MODES.LIMIT)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+                fetchMode === FETCH_MODES.LIMIT
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-white shadow-sm' 
+                    : 'bg-white text-gray-900 shadow-sm'
+                  : isDarkMode
+                    ? 'text-gray-300 hover:text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              📊 Record Limit
+            </button>
+            <button
+              onClick={() => setFetchMode(FETCH_MODES.DATE_RANGE)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+                fetchMode === FETCH_MODES.DATE_RANGE
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-white shadow-sm' 
+                    : 'bg-white text-gray-900 shadow-sm'
+                  : isDarkMode
+                    ? 'text-gray-300 hover:text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              📅 Date Range
+            </button>
+          </div>
+          {dateRanges && (
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Available: {new Date(dateRanges.earliest).toLocaleDateString()} - {new Date(dateRanges.latest).toLocaleDateString()}
+              {dateRangesLoading && ' (loading...)'}
+            </div>
+          )}
         </div>
       </div>
 
@@ -132,30 +291,55 @@ const DataSelectionControls = ({
           </select>
         </div>
 
-        <div>
-          <label className={`block text-sm font-medium mb-2 ${
-            isDarkMode ? 'text-gray-300' : 'text-gray-700'
-          }`}>
-            Data Limit
-          </label>
-          <select
-            value={rowLimit}
-            onChange={(e) => setRowLimit(Number(e.target.value))}
-            className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
-              isDarkMode 
-                ? 'border-gray-600 bg-gray-700 text-white' 
-                : 'border-gray-300 bg-white text-gray-900'
-            }`}
-          >
-            <option value={25}>25 records</option>
-            <option value={50}>50 records</option>
-            <option value={100}>100 records</option>
-            <option value={250}>250 records</option>
-            <option value={500}>500 records</option>
-            <option value={1000}>1000 records</option>
-            <option value={2000}>2000 records</option>
-          </select>
-        </div>
+        {fetchMode === FETCH_MODES.LIMIT && (
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Data Limit
+            </label>
+            <select
+              value={rowLimit}
+              onChange={(e) => setRowLimit(Number(e.target.value))}
+              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                isDarkMode 
+                  ? 'border-gray-600 bg-gray-700 text-white' 
+                  : 'border-gray-300 bg-white text-gray-900'
+              }`}
+            >
+              <option value={25}>25 records</option>
+              <option value={50}>50 records</option>
+              <option value={100}>100 records</option>
+              <option value={250}>250 records</option>
+              <option value={500}>500 records</option>
+              <option value={1000}>1000 records</option>
+              <option value={2000}>2000 records</option>
+            </select>
+          </div>
+        )}
+
+        {fetchMode === FETCH_MODES.DATE_RANGE && (
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Date Range Type
+            </label>
+            <select
+              value={pendingDateRangeType || DATE_RANGE_TYPES.EARLIEST_TO_DATE}
+              onChange={(e) => handleDateRangeTypeChange(e.target.value)}
+              className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                isDarkMode 
+                  ? 'border-gray-600 bg-gray-700 text-white' 
+                  : 'border-gray-300 bg-white text-gray-900'
+              }`}
+            >
+              <option value={DATE_RANGE_TYPES.EARLIEST_TO_DATE}>📅 Earliest to Date</option>
+              <option value={DATE_RANGE_TYPES.DATE_TO_DATE}>📅 Date to Date</option>
+              <option value={DATE_RANGE_TYPES.DATE_TO_LATEST}>📅 Date to Latest</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center mb-2">
@@ -189,6 +373,200 @@ const DataSelectionControls = ({
           </select>
         </div>
       </div>
+
+      {/* Date Range Inputs */}
+      {fetchMode === FETCH_MODES.DATE_RANGE && (
+        <div className={`mt-4 p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <h4 className={`text-md font-medium mb-3 ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>Date Range Configuration</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Start Date - Always visible */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Start Date {isStartDateDisabled && (
+                  <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    (Auto-filled: Earliest)
+                  </span>
+                )}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formatDatePart(pendingStartDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(e.target.value, formatTimePart(pendingStartDate));
+                      setPendingStartDate(newDate);
+                    }}
+                    disabled={isStartDateDisabled}
+                    min={dateRanges ? formatDatePart(dateRanges.earliest) : ''}
+                    max={dateRanges ? formatDatePart(dateRanges.latest) : ''}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isStartDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formatTimePart(pendingStartDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(formatDatePart(pendingStartDate), e.target.value);
+                      setPendingStartDate(newDate);
+                    }}
+                    disabled={isStartDateDisabled}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isStartDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+              </div>
+              {dateRanges && (
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Available from: {new Date(dateRanges.earliest).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+
+            {/* End Date - Always visible */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                End Date {isEndDateDisabled && (
+                  <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    (Auto-filled: Latest)
+                  </span>
+                )}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formatDatePart(pendingEndDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(e.target.value, formatTimePart(pendingEndDate));
+                      setPendingEndDate(newDate);
+                    }}
+                    disabled={isEndDateDisabled}
+                    min={dateRanges ? formatDatePart(dateRanges.earliest) : ''}
+                    max={dateRanges ? formatDatePart(dateRanges.latest) : ''}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isEndDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formatTimePart(pendingEndDate)}
+                    onChange={(e) => {
+                      const newDate = combineDateAndTime(formatDatePart(pendingEndDate), e.target.value);
+                      setPendingEndDate(newDate);
+                    }}
+                    disabled={isEndDateDisabled}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                      isEndDateDisabled 
+                        ? isDarkMode 
+                          ? 'border-gray-600 bg-gray-600 text-gray-400 cursor-not-allowed' 
+                          : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                        : isDarkMode 
+                          ? 'border-gray-600 bg-gray-800 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  />
+                </div>
+              </div>
+              {dateRanges && (
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Available until: {new Date(dateRanges.latest).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Apply/Reset buttons */}
+          <div className="flex justify-end gap-2 mt-4">
+            {hasPendingChanges() && (
+              <button
+                onClick={resetDateChanges}
+                className={`px-3 py-2 text-sm rounded-md transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Reset
+              </button>
+            )}
+            <button
+              onClick={applyDateChanges}
+              disabled={!hasPendingChanges()}
+              className={`px-4 py-2 text-sm rounded-md transition-colors duration-200 ${
+                !hasPendingChanges()
+                  ? isDarkMode 
+                    ? 'bg-gray-600 text-gray-500 cursor-not-allowed' 
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : isDarkMode 
+                    ? 'bg-blue-600 text-white hover:bg-blue-500' 
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`}
+            >
+              {!hasPendingChanges() ? 'No Changes' : 'Apply Date Range'}
+            </button>
+          </div>
+
+          {/* Current applied range info */}
+          {(startDate || endDate) && (
+            <div className={`mt-3 pt-3 border-t text-xs ${
+              isDarkMode ? 'border-gray-600 text-gray-400' : 'border-gray-300 text-gray-500'
+            }`}>
+              <div className="font-medium mb-1">Currently Applied:</div>
+              <div>
+                {startDate && `From: ${new Date(startDate).toLocaleString()}`}
+                {startDate && endDate && ' • '}
+                {endDate && `To: ${new Date(endDate).toLocaleString()}`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -209,7 +587,16 @@ const TradingChartDashboard = ({
     setSortOrder,
     selectedCandles,
     addSelectedCandle,
-    removeSelectedCandle
+    removeSelectedCandle,
+    // Date range functionality
+    fetchMode,
+    setFetchMode,
+    dateRangeType,
+    setDateRangeType,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate
   } = useTrading();
 
   // Debug: Log when context values change (can be removed in production)
@@ -250,10 +637,10 @@ const TradingChartDashboard = ({
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
-      console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange); // Debug log
+      console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange, fetchMode, dateRangeType, startDate, endDate); // Debug log
       fetchChartData();
     }
-  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange]);
+  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange, fetchMode, dateRangeType, startDate, endDate]);
 
   // Initialize chart when data changes - FIXED: Ensures chart updates when symbol/timeframe changes
   useEffect(() => {
@@ -409,29 +796,61 @@ const TradingChartDashboard = ({
     // Note: We don't clear chartDataRef.current here because we might need it for highlighting
     
     try {
-      let limit = rowLimit;
-      
-      // Adjust limit based on time range
-      switch (timeRange) {
-        case '1d':
-          limit = selectedTimeframe.includes('m') ? 1440 : 24; // minutes in day or hours
-          break;
-        case '7d':
-          limit = selectedTimeframe.includes('m') ? 10080 : 168; // 7 days worth
-          break;
-        case '30d':
-          limit = selectedTimeframe.includes('m') ? 43200 : 720; // 30 days worth
-          break;
-        case '90d':
-          limit = Math.min(90 * 24, 2000); // Cap at reasonable limit
-          break;
-        default:
-          limit = rowLimit;
+      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
+      let queryParams = new URLSearchParams();
+
+      if (fetchMode === FETCH_MODES.DATE_RANGE) {
+        // Use date range parameters
+        switch (dateRangeType) {
+          case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_DATE:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            if (endDate) {
+              queryParams.append('end_date', endDate);
+            }
+            break;
+          case DATE_RANGE_TYPES.DATE_TO_LATEST:
+            if (startDate) {
+              queryParams.append('start_date', startDate);
+            }
+            break;
+        }
+        // Set a reasonable limit to avoid overwhelming the chart
+        queryParams.append('limit', '10000');
+      } else {
+        // Use record limit mode
+        let limit = rowLimit;
+        
+        // Adjust limit based on time range
+        switch (timeRange) {
+          case '1d':
+            limit = selectedTimeframe.includes('m') ? 1440 : 24; // minutes in day or hours
+            break;
+          case '7d':
+            limit = selectedTimeframe.includes('m') ? 10080 : 168; // 7 days worth
+            break;
+          case '30d':
+            limit = selectedTimeframe.includes('m') ? 43200 : 720; // 30 days worth
+            break;
+          case '90d':
+            limit = Math.min(90 * 24, 2000); // Cap at reasonable limit
+            break;
+          default:
+            limit = rowLimit;
+        }
+        queryParams.append('limit', limit.toString());
       }
 
-      const response = await fetch(
-        `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=${limit}&order=${sortOrder || 'desc'}&sort_by=timestamp`
-      );
+      queryParams.append('order', sortOrder || 'desc');
+      queryParams.append('sort_by', 'timestamp');
+
+      const response = await fetch(`${url}?${queryParams.toString()}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
