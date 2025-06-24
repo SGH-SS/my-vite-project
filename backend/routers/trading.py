@@ -18,7 +18,24 @@ from models import (
     TimeFrame,
     ErrorResponse
 )
+from pydantic import BaseModel
+from typing import Dict, Any
 from services.trading_service import TradingDataService
+
+# Shape similarity response models
+class ShapeSimilarityMatrix(BaseModel):
+    """Shape similarity matrix response"""
+    matrix: List[List[float]]
+    candles: List[TradingDataPoint]
+    statistics: Dict[str, Any]
+    
+class ShapeSimilarityResponse(BaseModel):
+    """Shape similarity analysis response"""
+    symbol: str
+    timeframe: str
+    vector_type: str
+    similarity_matrix: ShapeSimilarityMatrix
+    count: int
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/trading", tags=["trading"])
@@ -205,4 +222,50 @@ async def get_symbol_summary(
         raise
     except Exception as e:
         logger.error(f"Error getting summary for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/shape-similarity/{symbol}/{timeframe}", response_model=ShapeSimilarityResponse, summary="Get shape similarity analysis")
+async def get_shape_similarity(
+    symbol: str,
+    timeframe: str,
+    vector_type: str = Query(..., description="Vector type (must be ISO vector)"),
+    limit: int = Query(default=50, ge=5, le=100, description="Number of candles to analyze"),
+    offset: int = Query(default=0, ge=0, description="Number of records to skip"),
+    start_date: Optional[datetime] = Query(default=None, description="Start date (ISO format)"),
+    end_date: Optional[datetime] = Query(default=None, description="End date (ISO format)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Calculate shape similarity matrix for ISO vectors
+    
+    - **symbol**: Trading symbol (es, eurusd, spy)
+    - **timeframe**: Time interval (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+    - **vector_type**: Must be an ISO vector type (iso_ohlc, iso_ohlcv)
+    - **limit**: Number of candles to analyze (max 100 for performance)
+    - **offset**: Number of records to skip for pagination
+    - **start_date**: Filter records after this date
+    - **end_date**: Filter records before this date
+    """
+    try:
+        # Validate that this is an ISO vector
+        if not vector_type.startswith('iso_'):
+            raise HTTPException(
+                status_code=400,
+                detail="Shape similarity analysis is only available for ISO vectors (iso_ohlc, iso_ohlcv)"
+            )
+        
+        return trading_service.calculate_shape_similarity(
+            db=db,
+            symbol=symbol.lower(),
+            timeframe=timeframe.lower(),
+            vector_type=vector_type,
+            limit=limit,
+            offset=offset,
+            start_date=start_date,
+            end_date=end_date
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating shape similarity for {symbol}_{timeframe}_{vector_type}: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 

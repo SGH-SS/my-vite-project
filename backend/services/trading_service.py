@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+import numpy as np
 
 from models import TradingDataPoint, TradingDataResponse, TableInfo, DatabaseStats
 from config import settings
@@ -139,21 +140,27 @@ class TradingDataService:
         
         # Build the SELECT clause based on available columns
         base_columns = ["symbol", "timestamp", "open", "high", "low", "close", "volume"]
-        possible_vector_columns = ["raw_ohlc_vec", "raw_ohlcv_vec", "norm_ohlc", "norm_ohlcv", "BERT_ohlc", "BERT_ohlcv"]
         
         # Only include columns that actually exist in the table
         columns = [col for col in base_columns if col in available_columns]
         
+        # Dynamically detect vector columns instead of hardcoding them
+        vector_columns = []
         if include_vectors:
-            existing_vector_columns = [col for col in possible_vector_columns if col in available_columns]
-            columns.extend(existing_vector_columns)
+            # Look for any column that looks like a vector column
+            # Common patterns: ends with '_vec', contains 'BERT', contains 'norm', contains 'iso_', etc.
+            vector_patterns = ['_vec', 'BERT_', 'norm_', 'raw_ohlc', 'raw_ohlcv', 'iso_']
+            for col in available_columns:
+                if any(pattern in col for pattern in vector_patterns) and col not in base_columns:
+                    vector_columns.append(col)
             
-            # Log which vector columns are available vs missing
-            missing_vectors = [col for col in possible_vector_columns if col not in available_columns]
-            if missing_vectors:
-                logger.info(f"Vector columns not found in {table_name}: {missing_vectors}")
-            if existing_vector_columns:
-                logger.info(f"Vector columns available in {table_name}: {existing_vector_columns}")
+            columns.extend(vector_columns)
+            
+            # Log which vector columns are available
+            if vector_columns:
+                logger.info(f"Vector columns detected in {table_name}: {vector_columns}")
+            else:
+                logger.info(f"No vector columns found in {table_name}")
         
         select_clause = ", ".join([f'"{col}"' for col in columns])
         
@@ -211,8 +218,8 @@ class TradingDataService:
                 row_dict = dict(zip(columns, row))
                 
                 # Convert vector strings back to lists if needed
-                if include_vectors:
-                    for vec_col in possible_vector_columns:
+                if include_vectors and vector_columns:
+                    for vec_col in vector_columns:
                         if vec_col in row_dict and row_dict[vec_col]:
                             try:
                                 # Handle case where vectors are stored as strings
@@ -284,4 +291,166 @@ class TradingDataService:
             start_date=start_date,
             end_date=end_date,
             include_vectors=False
-        ).data 
+        ).data
+
+    def calculate_shape_similarity(
+        self,
+        db: Session,
+        symbol: str,
+        timeframe: str,
+        vector_type: str,
+        limit: int = 50,
+        offset: int = 0,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ):
+        """Calculate shape similarity matrix for ISO vectors"""
+        
+        # Get the trading data with vectors
+        trading_data = self.get_trading_data(
+            db=db,
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            offset=offset,
+            start_date=start_date,
+            end_date=end_date,
+            include_vectors=True,
+            order="desc",
+            sort_by="timestamp"
+        )
+        
+        if not trading_data.data:
+            raise ValueError(f"No data found for {symbol}_{timeframe}")
+        
+        # Extract vectors and validate they exist
+        vectors = []
+        valid_candles = []
+        
+        for candle in trading_data.data:
+            vector_data = getattr(candle, vector_type, None)
+            if vector_data and isinstance(vector_data, list) and len(vector_data) > 0:
+                vectors.append(np.array(vector_data))
+                valid_candles.append(candle)
+        
+        if len(vectors) < 2:
+            raise ValueError(f"Insufficient vector data for similarity analysis. Found {len(vectors)} valid vectors.")
+        
+        # Calculate similarity matrix
+        n = len(vectors)
+        similarity_matrix = np.zeros((n, n))
+        
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    similarity_matrix[i][j] = 1.0
+                else:
+                    similarity_matrix[i][j] = self._calculate_cosine_similarity(vectors[i], vectors[j])
+        
+        # Calculate statistics
+        # Exclude diagonal (self-similarity) for statistics
+        off_diagonal = similarity_matrix[np.triu_indices_from(similarity_matrix, k=1)]
+        
+        statistics = {
+            "average_similarity": float(np.mean(off_diagonal)),
+            "max_similarity": float(np.max(off_diagonal)),
+            "min_similarity": float(np.min(off_diagonal)),
+            "std_similarity": float(np.std(off_diagonal)),
+            "total_comparisons": len(off_diagonal),
+            "high_similarity_pairs": int(np.sum(off_diagonal > 0.8)),
+            "medium_similarity_pairs": int(np.sum((off_diagonal > 0.5) & (off_diagonal <= 0.8))),
+            "low_similarity_pairs": int(np.sum(off_diagonal <= 0.5)),
+            "pattern_diversity": self._calculate_pattern_diversity(off_diagonal)
+        }
+        
+        # Import the response models here to avoid circular imports
+        from routers.trading import ShapeSimilarityMatrix, ShapeSimilarityResponse
+        
+        similarity_matrix_obj = ShapeSimilarityMatrix(
+            matrix=similarity_matrix.tolist(),
+            candles=valid_candles,
+            statistics=statistics
+        )
+        
+        return ShapeSimilarityResponse(
+            symbol=symbol,
+            timeframe=timeframe,
+            vector_type=vector_type,
+            similarity_matrix=similarity_matrix_obj,
+            count=len(valid_candles)
+        )
+    
+    def _calculate_cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
+        """Calculate shape similarity using multiple distance metrics for better discrimination"""
+        try:
+            # Handle zero vectors
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+            
+            # 1. Calculate Manhattan distance (L1 norm) - sensitive to shape differences
+            manhattan_dist = np.sum(np.abs(vec1 - vec2))
+            max_manhattan = np.sum(np.abs(vec1) + np.abs(vec2))
+            manhattan_sim = 1.0 - (manhattan_dist / max_manhattan) if max_manhattan > 0 else 0.0
+            
+            # 2. Calculate Euclidean distance (L2 norm)
+            euclidean_dist = np.linalg.norm(vec1 - vec2)
+            max_euclidean = np.linalg.norm(vec1) + np.linalg.norm(vec2)
+            euclidean_sim = 1.0 - (euclidean_dist / max_euclidean) if max_euclidean > 0 else 0.0
+            
+            # 3. Calculate normalized correlation
+            vec1_centered = vec1 - np.mean(vec1)
+            vec2_centered = vec2 - np.mean(vec2)
+            correlation = np.corrcoef(vec1_centered, vec2_centered)[0, 1]
+            correlation = 0.0 if np.isnan(correlation) else correlation
+            
+            # 4. Calculate cosine similarity
+            cosine_sim = np.dot(vec1, vec2) / (norm1 * norm2)
+            
+            # Combine multiple metrics with aggressive weighting for discrimination
+            # Emphasize Manhattan distance as it's more sensitive to shape differences
+            combined_similarity = (
+                0.4 * manhattan_sim +      # Most weight on Manhattan (shape-sensitive)
+                0.25 * euclidean_sim +     # Some weight on Euclidean
+                0.2 * (correlation + 1) / 2 +  # Convert correlation to 0-1 range
+                0.15 * (cosine_sim + 1) / 2    # Convert cosine to 0-1 range
+            )
+            
+            # Apply aggressive contrast enhancement to spread out values
+            # Use a power function to emphasize differences
+            if combined_similarity > 0.5:
+                # For high similarities, make them even higher but with diminishing returns
+                enhanced = 0.5 + 0.5 * np.power((combined_similarity - 0.5) * 2, 1.5)
+            else:
+                # For low similarities, make them even lower
+                enhanced = 0.5 * np.power(combined_similarity * 2, 0.7)
+            
+            # Apply final scaling to spread values more
+            # Scale to ensure we get good range: compress high values, expand low values
+            final_similarity = np.power(enhanced, 1.2)
+            
+            # Convert back to -1 to 1 range but bias toward lower values
+            result = (final_similarity * 2) - 1
+            
+            # Additional aggressive compression for high values
+            if result > 0.3:
+                result = 0.3 + 0.7 * np.power((result - 0.3) / 0.7, 2.0)
+            
+            return float(np.clip(result, -1.0, 1.0))
+            
+        except Exception as e:
+            logger.warning(f"Error calculating shape similarity: {e}")
+            return 0.0
+    
+    def _calculate_pattern_diversity(self, similarities: np.ndarray) -> str:
+        """Calculate pattern diversity based on similarity distribution"""
+        avg_sim = np.mean(similarities)
+        
+        if avg_sim < 0.3:
+            return "High Diversity"
+        elif avg_sim < 0.6:
+            return "Medium Diversity"
+        else:
+            return "Low Diversity" 

@@ -33,13 +33,19 @@ class TradingDataPoint(BaseModel):
     close: Optional[float] = None
     volume: Optional[float] = None
     
-    # Vector columns (optional)
+    # Vector columns (optional) - Now using dynamic field handling
     raw_ohlc_vec: Optional[List[float]] = None
     raw_ohlcv_vec: Optional[List[float]] = None
     norm_ohlc: Optional[List[float]] = None
     norm_ohlcv: Optional[List[float]] = None
     BERT_ohlc: Optional[List[float]] = None
     BERT_ohlcv: Optional[List[float]] = None
+    iso_ohlc: Optional[List[float]] = None
+    iso_ohlcv: Optional[List[float]] = None
+    
+    class Config:
+        # Allow additional fields for new vector columns
+        extra = "allow"
 
 class TradingDataResponse(BaseModel):
     """Response model for trading data queries"""

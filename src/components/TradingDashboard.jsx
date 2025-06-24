@@ -771,20 +771,86 @@ const TradingVectorDashboard = ({
   const [selectedRows, setSelectedRows] = useState([]);
   const [availableVectors, setAvailableVectors] = useState([]);
   const [missingVectors, setMissingVectors] = useState([]);
+  const [allVectorTypes, setAllVectorTypes] = useState([]); // Now dynamic instead of hardcoded!
+  
+  // Shape similarity state - moved to top level to follow Rules of Hooks
+  const [shapeSimilarityData, setShapeSimilarityData] = useState(null);
+  const [similarityLoading, setSimilarityLoading] = useState(false);
+  const [similarityError, setSimilarityError] = useState(null);
+  
+  // Matrix dimension controls
+  const [matrixRows, setMatrixRows] = useState(20);
+  const [matrixCols, setMatrixCols] = useState(20);
+  
+  // Calculate responsive cell size based on matrix dimensions
+  const getMatrixCellSize = () => {
+    const maxCols = Math.max(matrixCols, 20); // Minimum reference is 20 columns
+    
+    if (maxCols <= 20) return { width: 'w-6', height: 'h-6', size: '24px' }; // 24px default
+    if (maxCols <= 30) return { width: 'w-5', height: 'h-5', size: '20px' }; // 20px
+    if (maxCols <= 40) return { width: 'w-4', height: 'h-4', size: '16px' }; // 16px
+    if (maxCols <= 60) return { width: 'w-3', height: 'h-3', size: '12px' }; // 12px
+    if (maxCols <= 80) return { width: 'w-2', height: 'h-2', size: '8px' };  // 8px
+    return { width: 'w-1', height: 'h-1', size: '4px' }; // 4px for very large matrices
+  };
+  
+  const cellSize = getMatrixCellSize();
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
-  const allVectorTypes = [
-    { key: 'raw_ohlc_vec', name: 'Raw OHLC', color: 'bg-blue-500', description: 'Direct numerical values' },
-    { key: 'raw_ohlcv_vec', name: 'Raw OHLCV', color: 'bg-blue-600', description: 'With volume data' },
-    { key: 'norm_ohlc', name: 'Normalized OHLC', color: 'bg-green-500', description: 'Z-score normalized' },
-    { key: 'norm_ohlcv', name: 'Normalized OHLCV', color: 'bg-green-600', description: 'Z-score with volume' },
-    { key: 'BERT_ohlc', name: 'BERT OHLC', color: 'bg-purple-500', description: 'Semantic embeddings' },
-    { key: 'BERT_ohlcv', name: 'BERT OHLCV', color: 'bg-purple-600', description: 'Semantic with volume' }
-  ];
+  // Function to generate vector type metadata based on the key name
+  const getVectorTypeMetadata = (key) => {
+    // Default metadata
+    let name = key;
+    let color = 'bg-gray-500';
+    let description = 'Custom vector type';
+    
+    // Determine metadata based on key patterns
+    if (key.includes('raw_ohlc_vec')) {
+      name = 'Raw OHLC';
+      color = 'bg-blue-500';
+      description = 'Direct numerical values';
+    } else if (key.includes('raw_ohlcv_vec')) {
+      name = 'Raw OHLCV';
+      color = 'bg-blue-600';
+      description = 'With volume data';
+    } else if (key === 'norm_ohlc') {
+      name = 'Normalized OHLC';
+      color = 'bg-green-500';
+      description = 'Z-score normalized';
+    } else if (key === 'norm_ohlcv') {
+      name = 'Normalized OHLCV';
+      color = 'bg-green-600';
+      description = 'Z-score with volume';
+    } else if (key.includes('BERT_ohlc') && !key.includes('ohlcv')) {
+      name = 'BERT OHLC';
+      color = 'bg-purple-500';
+      description = 'Semantic embeddings';
+    } else if (key.includes('BERT_ohlcv')) {
+      name = 'BERT OHLCV';
+      color = 'bg-purple-600';
+      description = 'Semantic with volume';
+    } else if (key === 'iso_ohlc') {
+      name = 'ISO OHLC';
+      color = 'bg-orange-500';
+      description = 'Isolation forest features';
+    } else if (key === 'iso_ohlcv') {
+      name = 'ISO OHLCV';
+      color = 'bg-orange-600';
+      description = 'Isolation forest with volume';
+    } else if (key.includes('iso_')) {
+      // Generic ISO handling
+      name = key.replace(/_/g, ' ').toUpperCase();
+      color = 'bg-orange-500';
+      description = 'Isolation forest based vector';
+    }
+    
+    return { key, name, color, description };
+  };
 
   // Get available vector types based on actual data
   const getAvailableVectorTypes = () => {
+    if (!allVectorTypes || allVectorTypes.length === 0) return [];
     if (!vectorData?.data || vectorData.data.length === 0) return allVectorTypes;
     
     const sampleRow = vectorData.data[0];
@@ -800,6 +866,92 @@ const TradingVectorDashboard = ({
       fetchVectorData();
     }
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, fetchMode, dateRangeType, startDate, endDate]);
+
+  // Handle view mode switching based on vector type
+  useEffect(() => {
+    if (selectedVectorType.includes('iso_')) {
+      // For ISO vectors, default to shape-similarity mode
+      if (vectorViewMode !== 'shape-similarity' && vectorViewMode !== 'comparison') {
+        setVectorViewMode('shape-similarity');
+      }
+    } else {
+      // For non-ISO vectors, default to heatmap mode
+      if (vectorViewMode === 'shape-similarity') {
+        setVectorViewMode('heatmap');
+      }
+    }
+  }, [selectedVectorType]);
+
+  // Fetch shape similarity data when ISO vector is selected
+  useEffect(() => {
+    if (selectedVectorType.includes('iso_') && vectorData?.data?.length > 0) {
+      fetchShapeSimilarityData();
+    } else {
+      // Clear similarity data when switching away from ISO vectors
+      setShapeSimilarityData(null);
+      setSimilarityError(null);
+    }
+  }, [selectedVectorType, selectedSymbol, selectedTimeframe, matrixRows, matrixCols]);
+
+  const fetchShapeSimilarityData = async () => {
+    setSimilarityLoading(true);
+    setSimilarityError(null);
+    try {
+      const params = new URLSearchParams({
+        vector_type: selectedVectorType,
+        limit: Math.max(matrixRows, matrixCols).toString()
+      });
+
+      const response = await fetch(`${API_BASE_URL}/shape-similarity/${selectedSymbol}/${selectedTimeframe}?${params}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setShapeSimilarityData(data);
+    } catch (err) {
+      console.error('Error fetching shape similarity:', err);
+      setSimilarityError(err.message);
+      // Fallback to client-side calculation
+      calculateClientSideSimilarity();
+    } finally {
+      setSimilarityLoading(false);
+    }
+  };
+
+  const calculateClientSideSimilarity = () => {
+    if (!vectorData?.data) return;
+    
+    const dataToShow = vectorData.data.slice(0, Math.max(matrixRows, matrixCols));
+    const vectors = dataToShow.map(row => row[selectedVectorType]).filter(v => v && Array.isArray(v));
+    
+    if (vectors.length === 0) return;
+
+    // Calculate pairwise similarities (client-side fallback)
+    const shapeSimilarityMatrix = [];
+    for (let i = 0; i < vectors.length; i++) {
+      shapeSimilarityMatrix[i] = [];
+      for (let j = 0; j < vectors.length; j++) {
+        if (i === j) {
+          shapeSimilarityMatrix[i][j] = 1.0;
+        } else {
+          shapeSimilarityMatrix[i][j] = calculateVectorSimilarity(vectors[i], vectors[j]);
+        }
+      }
+    }
+
+    // Create fallback data structure
+    setShapeSimilarityData({
+      similarity_matrix: {
+        matrix: shapeSimilarityMatrix,
+        candles: dataToShow,
+        statistics: {
+          average_similarity: 0,
+          pattern_diversity: "Unknown"
+        }
+      },
+      count: dataToShow.length
+    });
+  };
 
   const fetchVectorData = async () => {
     setLoading(true);
@@ -874,13 +1026,30 @@ const TradingVectorDashboard = ({
       
       setVectorData(data);
       
-      // Check which vector types are available
+      // Dynamically build vector types from actual data
       if (data.data && data.data.length > 0) {
         const sampleRow = data.data[0];
-        const available = allVectorTypes.filter(type => 
+        
+        // Extract all potential vector columns from the data
+        const vectorKeys = Object.keys(sampleRow).filter(key => {
+          // Check if this looks like a vector column
+          const value = sampleRow[key];
+          const isVector = Array.isArray(value) && value.length > 0 && typeof value[0] === 'number';
+          const looksLikeVector = key.includes('_vec') || key.includes('BERT') || 
+                                 key.includes('norm_') || key.includes('raw_ohlc') || 
+                                 key.includes('iso_');
+          return isVector || looksLikeVector;
+        });
+        
+        // Build allVectorTypes dynamically
+        const dynamicVectorTypes = vectorKeys.map(key => getVectorTypeMetadata(key));
+        setAllVectorTypes(dynamicVectorTypes);
+        
+        // Now check which are available vs missing
+        const available = dynamicVectorTypes.filter(type => 
           sampleRow.hasOwnProperty(type.key) && sampleRow[type.key] !== null && sampleRow[type.key] !== undefined
         );
-        const missing = allVectorTypes.filter(type => 
+        const missing = dynamicVectorTypes.filter(type => 
           !sampleRow.hasOwnProperty(type.key) || sampleRow[type.key] === null || sampleRow[type.key] === undefined
         );
         
@@ -1310,7 +1479,31 @@ const TradingVectorDashboard = ({
     }
     
     if (norm1 === 0 || norm2 === 0) return 0;
-    return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+    
+    const cosineSim = dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+    
+    // Add Euclidean distance component for better discrimination
+    norm1 = Math.sqrt(norm1);
+    norm2 = Math.sqrt(norm2);
+    
+    let euclideanDist = 0;
+    for (let i = 0; i < vec1.length; i++) {
+      const diff = (vec1[i] / norm1) - (vec2[i] / norm2);
+      euclideanDist += diff * diff;
+    }
+    euclideanDist = Math.sqrt(euclideanDist);
+    
+    // Convert distance to similarity
+    const maxDistance = Math.sqrt(2);
+    const euclideanSim = 1.0 - (euclideanDist / maxDistance);
+    
+    // Combine similarities (70% cosine, 30% Euclidean)
+    const combinedSimilarity = 0.7 * cosineSim + 0.3 * euclideanSim;
+    
+    // Apply sigmoid-like transformation to enhance differences
+    const enhancedSimilarity = Math.tanh(combinedSimilarity * 2) * 0.8;
+    
+    return Math.max(-1, Math.min(1, enhancedSimilarity));
   };
 
   const renderVectorComparison = () => {
@@ -1522,6 +1715,550 @@ const TradingVectorDashboard = ({
                 similarity > 0.8 ? 'text-green-600' : 'text-gray-500'
               }`}>
                 {similarity > 0.8 ? 'Strong pattern match detected' : 'No strong pattern match'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderShapeSimilarity = () => {
+    if (!vectorData?.data) return null;
+    if (!selectedVectorType.includes('iso_')) {
+      return (
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode 
+            ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' 
+            : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+        }`}>
+          <div className="text-sm font-medium">Shape Similarity Analysis</div>
+          <div className="text-xs mt-1">
+            Shape similarity analysis is only available for ISO (Isolation Forest) vectors.
+          </div>
+          <div className="text-xs mt-2">
+            Please select an ISO vector type (iso_ohlc or iso_ohlcv) to use this visualization.
+          </div>
+        </div>
+      );
+    }
+
+    if (similarityLoading) {
+      return (
+        <div className="flex items-center justify-center h-32">
+          <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${
+            isDarkMode ? 'border-blue-400' : 'border-blue-600'
+          }`}></div>
+          <span className={`ml-3 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-600'
+          }`}>Calculating shape similarities...</span>
+        </div>
+      );
+    }
+
+    if (similarityError && !shapeSimilarityData) {
+      return (
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode 
+            ? 'bg-red-900/20 border-red-800 text-red-300' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="text-sm font-medium">Error calculating shape similarity</div>
+          <div className="text-xs mt-1">{similarityError}</div>
+          <button 
+            onClick={fetchShapeSimilarityData}
+            className="mt-2 px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors duration-200"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    if (!shapeSimilarityData) {
+      return <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No shape similarity data available</div>;
+    }
+
+    const { similarity_matrix } = shapeSimilarityData;
+    const { matrix: shapeSimilarityMatrix, candles: dataToShow, statistics } = similarity_matrix;
+
+    // Helper function to get similarity color with proper full-range mapping
+    const getSimilarityColor = (similarity) => {
+      // Clamp similarity to expected range
+      const clampedSim = Math.max(-1, Math.min(1, similarity));
+      
+      // Special case: 100% similarity (perfect match) - black
+      if (clampedSim >= 0.999) {
+        return '#000000';
+      }
+      
+      // Create a more intuitive color mapping for the full -1 to +1 range
+      if (clampedSim >= 0.7) {
+        // High positive similarity: Bright Green
+        const intensity = (clampedSim - 0.7) / 0.3; // 0-1 for range 0.7-1.0
+        const green = Math.floor(200 + intensity * 55); // 200-255
+        return `rgb(0, ${green}, 0)`;
+      } else if (clampedSim >= 0.4) {
+        // Medium-high positive similarity: Yellow-Green
+        const intensity = (clampedSim - 0.4) / 0.3; // 0-1 for range 0.4-0.7
+        const red = Math.floor(150 * (1 - intensity)); // 150-0
+        const green = 255;
+        return `rgb(${red}, ${green}, 0)`;
+      } else if (clampedSim >= 0.1) {
+        // Low positive similarity: Yellow to Orange
+        const intensity = (clampedSim - 0.1) / 0.3; // 0-1 for range 0.1-0.4
+        const red = 255;
+        const green = Math.floor(100 + intensity * 155); // 100-255
+        return `rgb(${red}, ${green}, 0)`;
+      } else if (clampedSim >= -0.2) {
+        // Near zero similarity: Orange to Red-Orange
+        const intensity = (clampedSim + 0.2) / 0.3; // 0-1 for range -0.2-0.1
+        const red = 255;
+        const green = Math.floor(intensity * 100); // 0-100
+        return `rgb(${red}, ${green}, 0)`;
+      } else if (clampedSim >= -0.5) {
+        // Medium negative similarity: Red to Dark Red
+        const intensity = (clampedSim + 0.5) / 0.3; // 0-1 for range -0.5 to -0.2
+        const red = Math.floor(180 + intensity * 75); // 180-255
+        const green = 0;
+        const blue = 0;
+        return `rgb(${red}, ${green}, ${blue})`;
+      } else {
+        // High negative similarity: Very Dark Red to Purple-Red
+        const intensity = (clampedSim + 1) / 0.5; // 0-1 for range -1.0 to -0.5
+        const red = Math.floor(100 + intensity * 80); // 100-180
+        const green = 0;
+        const blue = Math.floor(intensity * 50); // 0-50 (slight purple tint)
+        return `rgb(${red}, ${green}, ${blue})`;
+      }
+    };
+
+    // Helper function to handle candle selection
+    const handleCandleSelect = (candle, rowIndex) => {
+      const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+      const isSelected = selectedCandles.some(c => c.id === candleId);
+      
+      if (isSelected) {
+        removeSelectedCandle(candleId);
+      } else {
+        const candleWithMetadata = {
+          id: candleId,
+          symbol: selectedSymbol,
+          timeframe: selectedTimeframe,
+          timestamp: candle.timestamp,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+          change: candle.close - candle.open,
+          changePercent: ((candle.close - candle.open) / candle.open) * 100,
+          sourceIndex: rowIndex
+        };
+        addSelectedCandle(candleWithMetadata);
+      }
+    };
+
+
+
+    // Handle matrix cell click - toggle selection of both candles being compared
+    const handleMatrixCellClick = (rowCandle, rowIndex, colIndex) => {
+      const colCandle = dataToShow[colIndex];
+      
+      // Create candle IDs for both candles
+      const rowCandleId = `${selectedSymbol}_${selectedTimeframe}_${rowCandle.timestamp}`;
+      const colCandleId = `${selectedSymbol}_${selectedTimeframe}_${colCandle.timestamp}`;
+      
+      // Check if both candles are currently selected
+      const rowSelected = selectedCandles.some(c => c.id === rowCandleId);
+      const colSelected = selectedCandles.some(c => c.id === colCandleId);
+      
+      // If both are selected, deselect both
+      if (rowSelected && colSelected) {
+        removeSelectedCandle(rowCandleId);
+        removeSelectedCandle(colCandleId);
+      } else {
+        // Otherwise, ensure both are selected
+        if (!rowSelected) {
+          const rowCandleWithMetadata = {
+            id: rowCandleId,
+            symbol: selectedSymbol,
+            timeframe: selectedTimeframe,
+            timestamp: rowCandle.timestamp,
+            open: rowCandle.open,
+            high: rowCandle.high,
+            low: rowCandle.low,
+            close: rowCandle.close,
+            volume: rowCandle.volume,
+            change: rowCandle.close - rowCandle.open,
+            changePercent: ((rowCandle.close - rowCandle.open) / rowCandle.open) * 100,
+            sourceIndex: rowIndex
+          };
+          addSelectedCandle(rowCandleWithMetadata);
+        }
+        
+        if (!colSelected) {
+          const colCandleWithMetadata = {
+            id: colCandleId,
+            symbol: selectedSymbol,
+            timeframe: selectedTimeframe,
+            timestamp: colCandle.timestamp,
+            open: colCandle.open,
+            high: colCandle.high,
+            low: colCandle.low,
+            close: colCandle.close,
+            volume: colCandle.volume,
+            change: colCandle.close - colCandle.open,
+            changePercent: ((colCandle.close - colCandle.open) / colCandle.open) * 100,
+            sourceIndex: colIndex
+          };
+          addSelectedCandle(colCandleWithMetadata);
+        }
+      }
+    };
+
+    return (
+      <div className="space-y-4">
+        {/* Shape Similarity Explanation */}
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'
+        }`}>
+          <div className="flex items-center mb-2">
+            <h4 className={`text-sm font-semibold ${
+              isDarkMode ? 'text-blue-300' : 'text-blue-700'
+            }`}>🔍 Shape Similarity Analysis</h4>
+            <InfoTooltip id="shape-similarity-explanation" content={
+              <div>
+                <p className="font-semibold mb-2">🔍 Shape Similarity Matrix</p>
+                <p className="mb-2">Visual analysis of candlestick pattern similarity using ISO vectors:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>🟢 Green:</strong> High similarity (70-100%) - Very similar patterns</li>
+                  <li><strong>🟡 Yellow-Green:</strong> Good similarity (40-70%) - Notable pattern match</li>
+                  <li><strong>🟠 Orange:</strong> Low similarity (10-40%) - Some differences</li>
+                  <li><strong>🔴 Red:</strong> Poor similarity (-20-10%) - Different shapes</li>
+                  <li><strong>🔴 Dark Red:</strong> Very poor similarity (-100 to -20%) - Opposite patterns</li>
+                  <li><strong>Matrix View:</strong> Each cell shows similarity between two candles</li>
+                </ul>
+                <p className="mt-2 text-xs">ISO vectors capture the geometric shape characteristics of candlesticks, making this perfect for pattern recognition.</p>
+              </div>
+            } isDarkMode={isDarkMode} />
+          </div>
+          <div className={`text-xs ${
+            isDarkMode ? 'text-blue-200' : 'text-blue-600'
+          }`}>
+            This matrix shows how similar each candlestick shape is to every other candlestick in the dataset. 
+            ISO vectors are specifically designed to capture the geometric properties of price movements.
+          </div>
+        </div>
+
+        {/* Matrix Dimension Controls */}
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className={`text-sm font-semibold ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>Matrix Dimensions</h4>
+            <div className="flex items-center">
+              <InfoTooltip id="matrix-dimensions" content={
+                <div>
+                  <p className="font-semibold mb-2">📐 Matrix Dimension Controls</p>
+                  <p className="mb-2">Customize the size and layout of your similarity matrix:</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li><strong>Rows:</strong> Number of candles shown vertically (Y-axis)</li>
+                    <li><strong>Columns:</strong> Number of candles shown horizontally (X-axis)</li>
+                    <li><strong>Square Matrix:</strong> Rows = Columns (e.g., 50x50)</li>
+                    <li><strong>Rectangular Matrix:</strong> Different dimensions (e.g., 10x30)</li>
+                    <li><strong>Vector Comparison:</strong> Single row/column (e.g., 1x20)</li>
+                  </ul>
+                  <p className="mt-2 text-xs">Larger matrices provide more data but may impact performance. Consider your analysis needs.</p>
+                </div>
+              } isDarkMode={isDarkMode} />
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Matrix Rows (Y-axis)
+              </label>
+              <select
+                value={matrixRows}
+                onChange={(e) => setMatrixRows(Number(e.target.value))}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-700 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value={1}>1 row</option>
+                <option value={5}>5 rows</option>
+                <option value={10}>10 rows</option>
+                <option value={15}>15 rows</option>
+                <option value={20}>20 rows</option>
+                <option value={25}>25 rows</option>
+                <option value={30}>30 rows</option>
+                <option value={40}>40 rows</option>
+                <option value={50}>50 rows</option>
+                <option value={75}>75 rows</option>
+                <option value={100}>100 rows</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Matrix Columns (X-axis)
+              </label>
+              <select
+                value={matrixCols}
+                onChange={(e) => setMatrixCols(Number(e.target.value))}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-700 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value={1}>1 column</option>
+                <option value={5}>5 columns</option>
+                <option value={10}>10 columns</option>
+                <option value={15}>15 columns</option>
+                <option value={20}>20 columns</option>
+                <option value={25}>25 columns</option>
+                <option value={30}>30 columns</option>
+                <option value={40}>40 columns</option>
+                <option value={50}>50 columns</option>
+                <option value={75}>75 columns</option>
+                <option value={100}>100 columns</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Quick Presets
+              </label>
+              <select
+                onChange={(e) => {
+                  const [rows, cols] = e.target.value.split('x').map(Number);
+                  if (rows && cols) {
+                    setMatrixRows(rows);
+                    setMatrixCols(cols);
+                  }
+                }}
+                className={`w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-700 text-white' 
+                    : 'border-gray-300 bg-white text-gray-900'
+                }`}
+              >
+                <option value="">Select preset...</option>
+                <option value="1x5">1x5 (Vector)</option>
+                <option value="1x10">1x10 (Vector)</option>
+                <option value="1x20">1x20 (Vector)</option>
+                <option value="5x5">5x5 (Small)</option>
+                <option value="10x10">10x10 (Medium)</option>
+                <option value="20x20">20x20 (Default)</option>
+                <option value="30x30">30x30 (Large)</option>
+                <option value="50x50">50x50 (XL)</option>
+                <option value="100x100">100x100 (XXL)</option>
+                <option value="10x50">10x50 (Wide)</option>
+                <option value="50x10">50x10 (Tall)</option>
+              </select>
+            </div>
+            
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setMatrixRows(20);
+                  setMatrixCols(20);
+                }}
+                className={`w-full px-3 py-2 text-sm rounded-md transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Reset to 20x20
+              </button>
+            </div>
+          </div>
+          
+          <div className={`mt-3 p-2 rounded text-xs ${
+            isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <strong>Current Matrix:</strong> {matrixRows} × {matrixCols} = {matrixRows * matrixCols} cells
+                {matrixRows === 1 || matrixCols === 1 ? ' (Vector comparison mode)' : ' (Full similarity matrix)'}
+                {matrixRows * matrixCols > 2500 && (
+                  <span className="text-orange-500 font-medium"> • Large matrix - may impact performance</span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-gray-500">Cell size:</span>
+                <div 
+                  className={`${cellSize.width} ${cellSize.height} border-2 border-gray-400 rounded-sm`}
+                  style={{ backgroundColor: '#4ade80' }}
+                  title={`Matrix cells will be ${cellSize.size} × ${cellSize.size}`}
+                />
+                <span className="font-mono">{cellSize.size}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Similarity Matrix */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4 text-xs">
+              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Similarity Scale:</span>
+              <div className="flex items-center space-x-2 text-xs flex-wrap">
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(150, 0, 25)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Very Poor (-100 to -20%)</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(255, 0, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Poor (-20 to 10%)</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(255, 180, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Low (10-40%)</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(100, 255, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Good (40-70%)</span>
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(0, 220, 0)' }}></div>
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>High (70-99%)</span>
+                <div className="w-4 h-4 rounded border-2 border-white" style={{ backgroundColor: '#000000' }}></div>
+                <span className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Perfect (100%)</span>
+              </div>
+            </div>
+            <div className="text-xs">
+              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                Showing {Math.min(matrixRows, dataToShow.length)} × {Math.min(matrixCols, dataToShow.length)} matrix • Click cells to select candles
+              </span>
+            </div>
+          </div>
+
+          {/* Matrix Headers */}
+          <div className="flex items-center space-x-1 text-xs">
+            <div className={`${matrixCols > 50 ? 'w-12' : 'w-20'} ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              {matrixCols > 50 ? 'C#' : 'Candle'}
+            </div>
+            <div className={`flex ${matrixCols > 80 ? 'space-x-0' : 'space-x-0.5'} flex-wrap`}>
+              {dataToShow.slice(0, Math.min(matrixCols, dataToShow.length)).map((candle, i) => (
+                <div key={i} className={`${cellSize.width} text-center text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {matrixCols <= 20 ? i + 1 : 
+                   matrixCols <= 40 ? (i % 5 === 0 ? i + 1 : '•') :
+                   matrixCols <= 80 ? (i % 10 === 0 ? i + 1 : '') : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Similarity Matrix Grid - NO SCROLLING */}
+          <div className="space-y-1">
+            {dataToShow.slice(0, Math.min(matrixRows, dataToShow.length)).map((candle, rowIndex) => {
+              const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
+              const isSelected = selectedCandles.some(c => c.id === candleId);
+              
+              return (
+                <div key={rowIndex} className="flex items-center space-x-1">
+                  <div 
+                    className={`${matrixCols > 50 ? 'w-12' : 'w-20'} text-xs font-mono cursor-pointer rounded transition-all duration-200 ${
+                      isSelected 
+                        ? isDarkMode 
+                          ? 'bg-blue-900/40 text-blue-300' 
+                          : 'bg-blue-50 text-blue-700'
+                        : isDarkMode 
+                          ? 'text-gray-300 hover:bg-gray-700' 
+                          : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                    onClick={() => handleCandleSelect(candle, rowIndex)}
+                    title={`Candle ${rowIndex + 1}: ${new Date(candle.timestamp).toLocaleDateString()}`}
+                  >
+                    {matrixCols > 50 ? (
+                      <div className="truncate">#{rowIndex + 1}</div>
+                    ) : (
+                      <>
+                        <div className="truncate">#{rowIndex + 1}</div>
+                        <div className="text-xs opacity-75">${candle.close?.toFixed(2)}</div>
+                      </>
+                    )}
+                  </div>
+                  <div className={`flex ${matrixCols > 80 ? 'space-x-0' : 'space-x-0.5'} flex-wrap`}>
+                    {shapeSimilarityMatrix[rowIndex]?.slice(0, Math.min(matrixCols, dataToShow.length)).map((similarity, colIndex) => {
+                      const color = getSimilarityColor(similarity);
+                      const isDiagonal = rowIndex === colIndex;
+                      const isPerfectMatch = similarity >= 0.999;
+                      
+                      return (
+                        <div
+                          key={colIndex}
+                          className={`${cellSize.width} ${cellSize.height} rounded-sm transition-transform hover:scale-110 cursor-pointer ${
+                            isPerfectMatch 
+                              ? 'border-2 border-white' 
+                              : isDiagonal 
+                                ? 'border border-gray-600' 
+                                : 'border border-gray-300'
+                          }`}
+                          style={{ 
+                            backgroundColor: color,
+                            minWidth: cellSize.size,
+                            minHeight: cellSize.size
+                          }}
+                          title={`Similarity: ${(similarity * 100).toFixed(1)}%${isPerfectMatch ? ' (Perfect Match!)' : ''}\nCandle ${rowIndex + 1} vs Candle ${colIndex + 1}\n${new Date(candle.timestamp).toLocaleDateString()} vs ${new Date(dataToShow[colIndex].timestamp).toLocaleDateString()}`}
+                          onClick={() => handleMatrixCellClick(candle, rowIndex, colIndex)}
+                        />
+                      );
+                    })}
+                  </div>
+                  {isSelected && (
+                    <div className="ml-2 text-blue-500 text-xs">✓</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {dataToShow.length < Math.max(matrixRows, matrixCols) && (
+            <div className={`text-xs ${isDarkMode ? 'text-orange-400' : 'text-orange-600'} text-center mt-2 p-2 rounded ${
+              isDarkMode ? 'bg-orange-900/20' : 'bg-orange-50'
+            }`}>
+              ⚠️ Only {dataToShow.length} candles available, but matrix is set to {matrixRows}×{matrixCols}. 
+              Consider reducing matrix size or increasing data limit.
+            </div>
+          )}
+        </div>
+
+        {/* Shape Similarity Statistics */}
+        <div className={`p-4 rounded-lg border transition-colors duration-200 ${
+          isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <h5 className={`text-sm font-medium mb-3 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>Shape Similarity Statistics</h5>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div>
+              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Average Similarity:</span>
+              <div className="font-bold text-blue-500">
+                {statistics.average_similarity ? (statistics.average_similarity * 100).toFixed(1) + '%' : 'N/A'}
+              </div>
+            </div>
+            <div>
+              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Max Similarity:</span>
+              <div className={`font-medium ${
+                statistics.max_similarity > 0.8 ? 'text-green-600' : 'text-yellow-600'
+              }`}>
+                {statistics.max_similarity ? (statistics.max_similarity * 100).toFixed(1) + '%' : 'N/A'}
+              </div>
+            </div>
+            <div>
+              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Pattern Diversity:</span>
+              <div className={`font-medium ${
+                statistics.pattern_diversity === 'High Diversity' ? 'text-green-600' : 
+                statistics.pattern_diversity === 'Medium Diversity' ? 'text-yellow-600' : 'text-red-600'
+              }`}>
+                {statistics.pattern_diversity || 'Unknown'}
               </div>
             </div>
           </div>
@@ -1889,6 +2626,13 @@ const TradingVectorDashboard = ({
                                     <li><strong>Dimensions:</strong> 384 (semantic features)</li>
                                   </>
                                 )}
+                                {type.key.includes('iso_') && (
+                                  <>
+                                    <li><strong>Isolation Forest:</strong> Anomaly detection feature vectors</li>
+                                    <li><strong>Best for:</strong> Detecting unusual market conditions and outliers</li>
+                                    <li><strong>Dimensions:</strong> Varies based on isolation tree features</li>
+                                  </>
+                                )}
                               </ul>
                               <p className="mt-2 text-xs">Click to select this vector type for analysis.</p>
                             </div>
@@ -2001,6 +2745,13 @@ const TradingVectorDashboard = ({
                                     <li><strong>Dimensions:</strong> 384 (semantic features)</li>
                                   </>
                                 )}
+                                {type.key.includes('iso_') && (
+                                  <>
+                                    <li><strong>Isolation Forest:</strong> Anomaly detection with volume features</li>
+                                    <li><strong>Best for:</strong> Detecting unusual volume patterns and market anomalies</li>
+                                    <li><strong>Dimensions:</strong> Varies based on isolation tree features</li>
+                                  </>
+                                )}
                               </ul>
                               <p className="mt-2 text-xs">Volume data adds depth for institutional analysis and market strength detection.</p>
                             </div>
@@ -2049,6 +2800,7 @@ const TradingVectorDashboard = ({
           {selectedVectorType.includes('raw') && ' Raw vectors contain direct OHLC price values.'}
           {selectedVectorType.includes('norm') && ' Normalized vectors use z-score scaling for pattern matching across different price levels.'}
           {selectedVectorType.includes('BERT') && ' BERT vectors are semantic embeddings (384 dimensions) created by converting price data to natural language.'}
+          {selectedVectorType.includes('iso_') && ' ISO vectors are isolation forest features designed to detect anomalies and unusual market conditions.'}
         </div>
         
         {renderVectorStats()}
@@ -2070,37 +2822,45 @@ const TradingVectorDashboard = ({
                 <p className="font-semibold mb-2">👁️ Visualization Modes</p>
                 <p className="mb-2">Different ways to analyze your vector data:</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Heatmap:</strong> Color-coded matrix showing all vector values at once</li>
+                  <li><strong>Heatmap:</strong> Color-coded matrix showing all vector values at once (not for ISO vectors)</li>
                   <li><strong>Comparison:</strong> Side-by-side analysis of two specific time periods</li>
+                  <li><strong>Shape Similarity:</strong> Matrix showing candlestick shape similarity (ISO vectors only)</li>
                 </ul>
-                <p className="mt-2 text-xs"><strong>Tip:</strong> Use heatmap for pattern overview, comparison for detailed analysis.</p>
+                <p className="mt-2 text-xs"><strong>Tip:</strong> Use heatmap for numerical analysis, shape similarity for pattern recognition.</p>
               </div>
             } isDarkMode={isDarkMode} />
           </div>
           <div className="flex space-x-2">
-            {['heatmap', 'comparison'].map(mode => (
-              <button
-                key={mode}
-                onClick={() => setVectorViewMode(mode)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
-                  vectorViewMode === mode 
-                    ? isDarkMode
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-blue-600 text-white'
-                    : isDarkMode
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </button>
-            ))}
+            {['heatmap', 'comparison', 'shape-similarity'].map(mode => {
+              // Only show shape-similarity for ISO vectors, hide heatmap for ISO vectors
+              if (mode === 'shape-similarity' && !selectedVectorType.includes('iso_')) return null;
+              if (mode === 'heatmap' && selectedVectorType.includes('iso_')) return null;
+              
+              return (
+                <button
+                  key={mode}
+                  onClick={() => setVectorViewMode(mode)}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
+                    vectorViewMode === mode 
+                      ? isDarkMode
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-blue-600 text-white'
+                      : isDarkMode
+                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {mode === 'shape-similarity' ? 'Shape Similarity' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="min-h-64">
           {vectorViewMode === 'heatmap' && renderVectorHeatmap()}
           {vectorViewMode === 'comparison' && renderVectorComparison()}
+          {vectorViewMode === 'shape-similarity' && renderShapeSimilarity()}
         </div>
       </div>
 

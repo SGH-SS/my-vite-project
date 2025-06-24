@@ -9,19 +9,7 @@ ups n downs, lefts n rights, waves of groom n doom, stay lasered
 warm up:
 -data limit doesnt exist for date range on vectors
 
-----
-knowledge:
--get vectors made on single candle z score normilization 
-   ( current vectors are based off Global mean (μ) )
-&&
--understand current z score vector system Global mean (μ), how to integrate fluid global mean values based variable amount of data 
 
-
--calculate some yourself...fuck all
-
-(combo knowledge - how to merge global mean vectors and single candle vectors in one strategy)
-
-----
 do ->
 
 backend for similarity:
