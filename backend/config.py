@@ -9,6 +9,7 @@ class Settings:
     # Database configuration - matches your fill_vectors.py script
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5433/trading_data"
     SCHEMA: str = "backtest"
+    LABELS_SCHEMA: str = "labels"
     
     # Server configuration
     HOST: str = "0.0.0.0"

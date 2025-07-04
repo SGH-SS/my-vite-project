@@ -268,4 +268,13 @@ async def get_shape_similarity(
         raise
     except Exception as e:
         logger.error(f"Error calculating shape similarity for {symbol}_{timeframe}_{vector_type}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/labels/spy1h", summary="Get all labels from spy1h_labeled table")
+async def get_spy1h_labels(db: Session = Depends(get_db)):
+    """Fetch all rows from labels.spy1h_labeled table"""
+    try:
+        return trading_service.get_spy1h_labels(db)
+    except Exception as e:
+        logger.error(f"Error fetching spy1h labels: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 

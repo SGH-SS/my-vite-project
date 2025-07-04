@@ -571,6 +571,61 @@ const DataSelectionControls = ({
   );
 };
 
+// --- LABELS TEST BOX ---
+const LabelsTestBox = ({ isDarkMode }) => {
+  const [status, setStatus] = useState('idle');
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setStatus('loading');
+    fetch('http://localhost:8000/api/trading/labels/spy1h')
+      .then(res => {
+        if (!res.ok) throw new Error('Network error');
+        return res.json();
+      })
+      .then(json => {
+        setData(json);
+        setStatus('success');
+      })
+      .catch(e => {
+        setError(e.message);
+        setStatus('error');
+      });
+  }, []);
+
+  let content;
+  if (status === 'loading') content = <span>Loading labels...</span>;
+  else if (status === 'error') content = <span className="text-red-500">Error: {error}</span>;
+  else if (status === 'success' && Array.isArray(data)) {
+    const highCount = data.filter(row => row.label === 'tjr_high').length;
+    const lowCount = data.filter(row => row.label === 'tjr_low').length;
+    const sample = data[0];
+    content = (
+      <div>
+        <div>✅ <b>Labels connection OK</b></div>
+        <div>tjr_high: <b>{highCount}</b> &nbsp;|&nbsp; tjr_low: <b>{lowCount}</b></div>
+        {sample && (
+          <div className="mt-2 text-xs">
+            <b>Sample row:</b><br/>
+            id: {sample.id}, label: {sample.label}, value: {sample.value},<br/>
+            pointer: {Array.isArray(sample.pointer) ? sample.pointer.join(', ') : String(sample.pointer)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`mb-4 p-4 rounded border text-sm ${
+      isDarkMode ? 'bg-gray-900 border-blue-700 text-blue-200' : 'bg-blue-50 border-blue-300 text-blue-800'
+    }`}>
+      <b>🔗 Labels Table Test</b><br/>
+      {content}
+    </div>
+  );
+};
+
 const TradingChartDashboard = ({ 
   tables,
   isDarkMode 
@@ -1484,33 +1539,33 @@ const TradingChartDashboard = ({
 
   return (
     <div className="space-y-6">
-              {/* Chart Dashboard Header */}
-        <div className={`p-6 rounded-lg transition-colors duration-200 ${
-          isDarkMode 
-            ? 'bg-gradient-to-r from-green-800 via-green-700 to-blue-800 text-white' 
-            : 'bg-gradient-to-r from-green-600 to-blue-600 text-white'
-        }`}>
-          <div className="flex items-center">
-            <h2 className="text-3xl font-black tracking-tight mb-2" style={{ 
-              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-              letterSpacing: '-0.02em',
-              textShadow: '0 2px 4px rgba(0,0,0,0.3)'
-            }}>
-              Day<span className="text-green-200">gent</span> <span className="text-xl font-semibold text-green-100">Chart Analysis</span>
-            </h2>
-          <InfoTooltip id="chart-dashboard" content={
-            <div>
-              <p className="font-semibold mb-2">📈 Chart Dashboard Overview</p>
-              <p className="mb-2">Professional trading charts with advanced visualization:</p>
-              <ul className="list-disc list-inside space-y-1 text-xs">
-                <li><strong>Interactive Charts:</strong> Candlestick, line, and area charts</li>
-                <li><strong>Technical Indicators:</strong> SMA, EMA, Bollinger Bands, Volume</li>
-                <li><strong>Real-time Data:</strong> Live price updates and market stats</li>
-                <li><strong>Multiple Timeframes:</strong> From 1-minute to daily charts</li>
-              </ul>
-              <p className="mt-2 text-xs">Perfect for technical analysis, trend identification, and trading decisions.</p>
-            </div>
-          } isDarkMode={isDarkMode} />
+      {/* Chart Dashboard Header */}
+      <div className={`p-6 rounded-lg transition-colors duration-200 ${
+        isDarkMode 
+          ? 'bg-gradient-to-r from-green-800 via-green-700 to-blue-800 text-white' 
+          : 'bg-gradient-to-r from-green-600 to-blue-600 text-white'
+      }`}>
+        <div className="flex items-center">
+          <h2 className="text-3xl font-black tracking-tight mb-2" style={{ 
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            letterSpacing: '-0.02em',
+            textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          }}>
+            Day<span className="text-green-200">gent</span> <span className="text-xl font-semibold text-green-100">Chart Analysis</span>
+          </h2>
+        <InfoTooltip id="chart-dashboard" content={
+          <div>
+            <p className="font-semibold mb-2">📈 Chart Dashboard Overview</p>
+            <p className="mb-2">Professional trading charts with advanced visualization:</p>
+            <ul className="list-disc list-inside space-y-1 text-xs">
+              <li><strong>Interactive Charts:</strong> Candlestick, line, and area charts</li>
+              <li><strong>Technical Indicators:</strong> SMA, EMA, Bollinger Bands, Volume</li>
+              <li><strong>Real-time Data:</strong> Live price updates and market stats</li>
+              <li><strong>Multiple Timeframes:</strong> From 1-minute to daily charts</li>
+            </ul>
+            <p className="mt-2 text-xs">Perfect for technical analysis, trend identification, and trading decisions.</p>
+          </div>
+        } isDarkMode={isDarkMode} />
         </div>
                   <p className={isDarkMode ? 'text-green-200' : 'text-green-100'}>
             Interactive charting & technical analysis • Professional trading tools
@@ -1532,7 +1587,10 @@ const TradingChartDashboard = ({
         </div>
       </div>
 
-            {/* Data Selection & Controls - Using Consistent Component */}
+      {/* --- LABELS TEST BOX --- */}
+      <LabelsTestBox isDarkMode={isDarkMode} />
+
+      {/* Data Selection & Controls - Using Consistent Component */}
       <DataSelectionControls 
         handleRefresh={fetchChartData}
         isDarkMode={isDarkMode}

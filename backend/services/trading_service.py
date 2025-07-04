@@ -453,4 +453,25 @@ class TradingDataService:
         elif avg_sim < 0.6:
             return "Medium Diversity"
         else:
-            return "Low Diversity" 
+            return "Low Diversity"
+
+    def get_spy1h_labels(self, db: Session) -> list:
+        """Fetch all rows from labels.spy1h_labeled table"""
+        from config import settings
+        query = text(f"""
+            SELECT id, label, value, pointer
+            FROM {settings.LABELS_SCHEMA}.spy1h_labeled
+            ORDER BY id
+        """)
+        result = db.execute(query)
+        rows = result.fetchall()
+        # Convert to list of dicts
+        return [
+            {
+                "id": row[0],
+                "label": row[1],
+                "value": row[2],
+                "pointer": row[3],
+            }
+            for row in rows
+        ] 
