@@ -17,21 +17,29 @@
 #### 📊 **1. Data Dashboard**
 - **Real-time OHLCV Data**: Advanced filtering, pagination, and search capabilities
 - **Database Integration**: PostgreSQL with 21 trading tables (ES, EURUSD, SPY across 7 timeframes)
-- **Advanced Controls**: Date range filtering, sorting, export to CSV
+- **Advanced Controls**: Date range filtering with multiple modes, sorting, export to CSV
 - **Interactive Selection**: Click-to-select candles with cross-dashboard synchronization
+- **Debug Panel**: Backend sorting verification, data quality indicators, API debugging
 
 #### 🧠 **2. Vector Intelligence Dashboard**
-- **6 Vector Types**: Raw OHLC/OHLCV, normalized, BERT embeddings (384 dimensions each)
+- **Dynamic Vector Detection**: Automatically detects available vector types from data
 - **ISO Vectors**: Isolation Forest vectors for anomaly detection and shape analysis
 - **Pattern Recognition**: Mathematical representation of market patterns
-- **Vector Heatmaps**: Color-coded visualization for pattern analysis
+- **Vector Heatmaps**: Color-coded visualization for pattern analysis (limited for large vectors)
+- **Shape Similarity Matrix**: Exclusive to ISO vectors with configurable dimensions
 - **Comparison Tools**: Side-by-side vector analysis with similarity scoring
 
 #### 📈 **3. Chart Analysis Dashboard**
-- **Lightweight Charts**: High-performance candlestick, line, and area charts
-- **Interactive Selection**: Advanced candle selection with click, range, and drag modes
+- **Lightweight Charts v5.0**: High-performance candlestick, line, and area charts
+- **Advanced Selection Modes**: 
+  - Click mode (default)
+  - Range selection (Shift+Click)
+  - Multi-select (Ctrl/Cmd+Click)
+  - Time-based quick selection (1H, 4H, 1D)
+- **Interactive Candle Selection**: Drag to select multiple, with real-time highlighting
+- **Labels Integration**: 🏷️ Trading labels display (tjr_high/tjr_low indicators)
 - **Real-time Updates**: Synchronized with data dashboard selections
-- **Technical Analysis**: Price action analysis with market statistics
+- **Keyboard Shortcuts**: Escape to exit, Delete to clear selection
 
 #### 🤖 **4. LLM Dashboard (AI Assistant)**
 - **Chat Interface**: Complete framework for AI integration (ready for GPT-4/Claude)
@@ -39,25 +47,67 @@
 - **Dynamic Mini Dashboard**: Resizable component display system
 - **AI-Ready Framework**: Backend integration points for real AI models
 
-## 🎯 **Advanced Vector System**
+## 🎯 **Advanced Features**
 
-### **Complete Vector Types**
+### **🏷️ Trading Labels System** ⭐ **NEW**
+- **Label Types**: tjr_high and tjr_low indicators
+- **Database Integration**: Separate labels tables for each symbol/timeframe
+- **API Endpoint**: `/api/trading/labels/{symbol}{timeframe}`
+- **Chart Integration**: Visual indicators on price charts
+- **Label Structure**:
+  ```json
+  {
+    "id": 1,
+    "label": "tjr_high",
+    "value": 4500.25,
+    "pointer": [1, 2, 3]  // Reference to candle indices
+  }
+  ```
+
+### **📅 Enhanced Date Range Controls**
+- **Fetch Modes**:
+  - `LIMIT`: Traditional record count limiting
+  - `DATE_RANGE`: Time-based data fetching
+- **Date Range Types**:
+  - `EARLIEST_TO_DATE`: From earliest available to specified date
+  - `DATE_TO_DATE`: Between two specific dates
+  - `DATE_TO_LATEST`: From specified date to most recent
+- **Auto-fill Logic**: Intelligent date population based on available data
+- **Separate Date/Time Inputs**: Granular control with validation
+
+### **🔍 Global State Management**
+- **Shared Context** (TradingContext):
+  - Symbol & Timeframe selection
+  - Row limit and pagination
+  - Sort order & column
+  - Search term & column filter
+  - Selected candles (global)
+  - Date range configuration
+  - Debug & filter visibility
+- **Cross-Dashboard Sync**: All dashboards share the same context
+
+### **Complete Vector System**
 ```
+Dynamic Vector Types (auto-detected from data):
 1. raw_ohlc_vec      - Direct OHLC values (4 dimensions)
 2. raw_ohlcv_vec     - OHLC + Volume (5 dimensions)  
 3. norm_ohlc         - Z-score normalized OHLC (4 dimensions)
 4. norm_ohlcv        - Z-score normalized OHLCV (5 dimensions)
 5. BERT_ohlc         - Semantic embeddings (384 dimensions)
 6. BERT_ohlcv        - BERT with volume (384 dimensions)
+7. iso_ohlc          - Isolation Forest features
+8. iso_ohlcv         - ISO features with volume
++ Any custom vectors in the database
 ```
 
-### **🔍 ISO Vectors & Shape Similarity** ⭐ **Key Feature**
-- **iso_ohlc / iso_ohlcv**: Isolation Forest vectors for anomaly detection
-- **Shape Similarity Analysis**: Backend-calculated similarity matrices (ISO vectors only)
-- **Visual Matrix**: Configurable dimensions from 1x1 to 100x100
+### **🔍 ISO Vectors & Shape Similarity**
+- **Exclusive Features**: Shape similarity ONLY works with ISO vectors
+- **Backend Processing**: Server-side similarity calculations for performance
+- **Matrix Dimensions**: Configurable from 1x1 to 100x100
+- **Cell Size Optimization**: Dynamic sizing based on matrix dimensions
 - **Advanced Algorithms**: Manhattan, Euclidean, correlation, and cosine similarity
-- **Color-coded Heatmaps**: Full range similarity visualization (-100% to +100%)
-- **Pattern Recognition**: Identifies similar candlestick shapes and market conditions
+- **Full Range Visualization**: -100% (opposite) to +100% (identical)
+- **Client-Side Fallback**: Automatic calculation if backend unavailable
 
 ## 🏗️ **Technology Stack**
 
@@ -68,6 +118,7 @@ React 19.1.0 + Vite 6.3.5
 ├── Lightweight Charts 5.0.7 (Performance charts)
 ├── Context API (Global state management)
 ├── Custom Hooks (Data management)
+├── Selected Candles Panel (Global selection UI)
 └── Dark/Light Theme Support
 ```
 
@@ -79,7 +130,8 @@ FastAPI 0.104.1 + Python
 ├── Pandas 2.1.4 (Data processing) 
 ├── NumPy 1.26.2 (Mathematical operations)
 ├── Pydantic 2.5.3 (Data validation)
-└── Alembic 1.12.1 (Database migrations)
+├── Alembic 1.12.1 (Database migrations)
+└── Labels System (Trading indicators)
 ```
 
 ### **AI/ML Pipeline**
@@ -174,10 +226,15 @@ my-vite-project/
 
 ### **Core Trading Data**
 ```
-GET /api/trading/data/{symbol}/{timeframe}     # OHLCV data with optional vectors
-GET /api/trading/stats                         # Database statistics  
-GET /api/trading/tables                        # Available data tables
-GET /api/trading/date-ranges/{symbol}/{timeframe}  # Available date ranges
+GET /api/trading/data/{symbol}/{timeframe}        # OHLCV data with optional vectors
+GET /api/trading/stats                            # Database statistics  
+GET /api/trading/tables                           # Available data tables
+GET /api/trading/date-ranges/{symbol}/{timeframe} # Available date ranges
+```
+
+### **Trading Labels** ⭐ **NEW**
+```
+GET /api/trading/labels/{symbol}{timeframe}       # Trading indicators (tjr_high/low)
 ```
 
 ### **Shape Similarity (ISO Vectors Only)**
@@ -189,8 +246,11 @@ GET /api/trading/shape-similarity/{symbol}/{timeframe}  # Advanced similarity an
 - `limit`: Records to return (1-10,000)
 - `offset`: Pagination offset
 - `start_date`/`end_date`: Date filtering (ISO format)
-- `include_vectors`: Include vector columns
+- `include_vectors`: Include vector columns (true/false)
 - `vector_type`: Specific vector type (required for shape similarity)
+- `order`: Sort order (asc/desc)
+- `sort_by`: Column to sort by (default: timestamp)
+- `count_only`: Return only count (for pagination)
 
 ## ⚙️ **Installation & Setup**
 
@@ -226,22 +286,40 @@ python compute.py
 ## 🎨 **User Interface Features**
 
 ### **Cross-Dashboard Functionality**
-- **Candle Selection**: Select candles in any dashboard, see them highlighted everywhere
+- **Selected Candles Panel**: Unified selection display across all dashboards
+- **Global Candle Selection**: Select in one dashboard, see everywhere
+- **Selection Persistence**: Maintains selection when switching dashboards
+- **Multi-Symbol Support**: Can select candles from different symbols/timeframes
 - **Theme Support**: Dark/light mode with persistent settings
 - **Responsive Design**: Works on desktop, tablet, and mobile
 - **Advanced Tooltips**: Comprehensive help system throughout
 
-### **Shape Similarity Matrix Controls**
-- **Configurable Dimensions**: 1x1 to 100x100 matrices
-- **Quick Presets**: 5x5, 10x10, 20x20, 50x50, 100x100
-- **Vector Comparison Mode**: 1xN or Nx1 for specific pattern analysis
-- **Performance Optimization**: Dynamic cell sizing for large matrices
+### **Chart Selection Features**
+- **Selection Modes**:
+  - Default click to select/deselect
+  - Shift+Click for range selection
+  - Ctrl/Cmd+Click for multi-select
+  - Drag to select multiple candles
+- **Visual Feedback**:
+  - Blue highlighting for selected candles
+  - Hover tooltips with OHLC data
+  - Selection box during drag
+  - Mode indicators on screen
+- **Quick Actions**:
+  - Time-based selection (1H, 4H, 1D)
+  - Delete key to clear selection
+  - Escape to exit selection mode
 
-### **Advanced Filtering**
-- **Smart Search**: Across all columns with formatted number handling
-- **Date Range Modes**: Multiple filtering strategies
-- **Sort Controls**: Multi-column sorting with ascending/descending
-- **Real-time Results**: Updates as you type
+### **Data Quality Indicators**
+- **Backend Sorting Status**: ✅ Working / ❌ Client-side fallback
+- **Data Quality Assessment**: 
+  - GOOD (Historical/Recent data as expected)
+  - POOR (Sorting issues detected)
+- **Debug Information**:
+  - API URLs for transparency
+  - Actual data ranges
+  - Request/response details
+  - Performance metrics
 
 ## 🔬 **Shape Similarity Analysis Deep Dive**
 
@@ -286,7 +364,7 @@ CREATE TABLE {symbol}_{timeframe} (
     close DECIMAL,
     volume DECIMAL,
     
-    -- Vector columns (generated by compute.py)
+    -- Vector columns (dynamically detected)
     raw_ohlc_vec DECIMAL[],      -- [open, high, low, close]
     raw_ohlcv_vec DECIMAL[],     -- [open, high, low, close, volume]
     norm_ohlc DECIMAL[],         -- Z-score normalized OHLC
@@ -295,6 +373,14 @@ CREATE TABLE {symbol}_{timeframe} (
     BERT_ohlcv DECIMAL[],        -- 384-dim embeddings with volume
     iso_ohlc DECIMAL[],          -- Isolation forest features
     iso_ohlcv DECIMAL[]          -- ISO features with volume
+);
+
+-- Labels tables (NEW)
+CREATE TABLE labels_{symbol}{timeframe} (
+    id SERIAL PRIMARY KEY,
+    label VARCHAR,               -- 'tjr_high' or 'tjr_low'
+    value DECIMAL,               -- Price value
+    pointer INTEGER[]            -- Reference to candle indices
 );
 ```
 
@@ -329,14 +415,16 @@ BATCH_SIZE=128
 ### **Immediate Roadmap**
 - [ ] **LLM Backend Integration**: Connect GPT-4/Claude for real AI analysis
 - [ ] **Real-time Data Feeds**: WebSocket integration for live market data
-- [ ] **Enhanced ISO Vectors**: Additional isolation forest features
-- [ ] **Advanced Pattern Library**: Pre-defined candlestick pattern recognition
+- [ ] **Enhanced Labels System**: Additional indicator types beyond tjr_high/low
+- [ ] **Export Selected Candles**: Export analysis of selected candle groups
+- [ ] **Pattern Templates**: Save and load candle selection patterns
 
 ### **Advanced Features**  
 - [ ] **Backtesting Engine**: Historical strategy testing with vector patterns
 - [ ] **Alert System**: Pattern-based notifications and automated signals
 - [ ] **Portfolio Management**: Multi-asset position tracking and risk management
 - [ ] **Machine Learning Pipeline**: Auto-pattern discovery and classification
+- [ ] **Label-based Strategies**: Trading strategies using tjr indicators
 
 ## 💡 **Development Notes**
 
@@ -346,10 +434,17 @@ BATCH_SIZE=128
 - **Flexibility**: Switch between architectures anytime via `App.jsx` toggle
 
 ### **Performance Considerations**
-- **Vector Heatmaps**: Optimized for matrices up to 2,500 cells
-- **Shape Similarity**: Backend processing for complex calculations
-- **Chart Rendering**: Lightweight-charts for 60fps performance
-- **Database Queries**: Efficient pagination and indexing
+- **Vector Heatmaps**: Limited display for vectors >1000 dimensions (e.g., BERT)
+- **Shape Similarity**: Backend processing recommended for matrices >20x20
+- **Chart Selection**: Optimized for up to 500 simultaneous selections
+- **Label Queries**: Cached for performance with trading data
+- **Date Range Queries**: More efficient than large limit-based queries
+
+### **Known Limitations**
+- **BERT Heatmaps**: Too large for visual display (384 dimensions)
+- **ISO Vectors Only**: Shape similarity exclusive to isolation forest vectors
+- **Selection Limit**: Browser may slow with >1000 selected candles
+- **Label Types**: Currently supports only tjr_high and tjr_low
 
 ## 🆘 **Troubleshooting**
 
@@ -369,4 +464,11 @@ BATCH_SIZE=128
 
 **Daygent** represents a comprehensive agentic trading intelligence platform, combining quantitative analysis, machine learning, and professional trading tools in a unified interface. The monolithic architecture ensures seamless integration while the modular components provide future scalability options.
 
-**🎯 Current Status**: Fully functional with 4 integrated dashboards, advanced vector analysis including ISO vectors and shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
+**🎯 Current Status**: Fully functional with 4 integrated dashboards, trading labels system, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
+
+**Latest Updates**:
+- 🏷️ Trading labels integration with tjr_high/low indicators
+- 🎯 Advanced chart selection modes with keyboard shortcuts
+- 📅 Enhanced date range controls with multiple fetch modes
+- 🔍 Debug panel for data quality verification
+- 📊 Selected Candles Panel for global selection management
