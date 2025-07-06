@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 // Import lightweight-charts v5.0 - install with: npm install lightweight-charts
-import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType, createSeriesMarkers } from 'lightweight-charts';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
 import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
@@ -571,57 +571,303 @@ const DataSelectionControls = ({
   );
 };
 
-// --- LABELS TEST BOX ---
-const LabelsTestBox = ({ isDarkMode }) => {
-  const [status, setStatus] = useState('idle');
-  const [data, setData] = useState(null);
+// --- TJR LABELS CONTROL ---
+const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }) => {
+  const [showTjrHighs, setShowTjrHighs] = useState(false);
+  const [showTjrLows, setShowTjrLows] = useState(false);
+  const [labelsData, setLabelsData] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [matchingLabels, setMatchingLabels] = useState([]);
 
+  const {
+    selectedSymbol,
+    selectedTimeframe
+  } = useTrading();
+
+  // Fetch labels data when component mounts
   useEffect(() => {
-    setStatus('loading');
-    fetch('http://localhost:8000/api/trading/labels/spy1h')
-      .then(res => {
-        if (!res.ok) throw new Error('Network error');
-        return res.json();
-      })
-      .then(json => {
-        setData(json);
-        setStatus('success');
-      })
-      .catch(e => {
-        setError(e.message);
-        setStatus('error');
-      });
-  }, []);
+    const fetchLabelsData = async () => {
+      if (!selectedSymbol || !selectedTimeframe) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Build the API endpoint based on symbol and timeframe
+        const endpoint = `http://localhost:8000/api/trading/labels/${selectedSymbol}${selectedTimeframe}`;
+        console.log('🏷️ Fetching labels from:', endpoint);
+        
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('🏷️ Labels data received:', data);
+        
+        if (Array.isArray(data)) {
+          setLabelsData(data);
+          console.log('📊 Labels stats:', {
+            total: data.length,
+            tjr_high: data.filter(l => l.label === 'tjr_high').length,
+            tjr_low: data.filter(l => l.label === 'tjr_low').length
+          });
+        } else {
+          setLabelsData([]);
+        }
+        
+      } catch (err) {
+        console.error('❌ Error fetching labels:', err);
+        setError(err.message);
+        setLabelsData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  let content;
-  if (status === 'loading') content = <span>Loading labels...</span>;
-  else if (status === 'error') content = <span className="text-red-500">Error: {error}</span>;
-  else if (status === 'success' && Array.isArray(data)) {
-    const highCount = data.filter(row => row.label === 'tjr_high').length;
-    const lowCount = data.filter(row => row.label === 'tjr_low').length;
-    const sample = data[0];
-    content = (
-      <div>
-        <div>✅ <b>Labels connection OK</b></div>
-        <div>tjr_high: <b>{highCount}</b> &nbsp;|&nbsp; tjr_low: <b>{lowCount}</b></div>
-        {sample && (
-          <div className="mt-2 text-xs">
-            <b>Sample row:</b><br/>
-            id: {sample.id}, label: {sample.label}, value: {sample.value},<br/>
-            pointer: {Array.isArray(sample.pointer) ? sample.pointer.join(', ') : String(sample.pointer)}
+    fetchLabelsData();
+  }, [selectedSymbol, selectedTimeframe]);
+
+  // Scan current candles for matching labels
+  useEffect(() => {
+    if (!labelsData || labelsData.length === 0 || !chartDataRef?.current) {
+      setMatchingLabels([]);
+      return;
+    }
+
+    console.log('🔍 Scanning candles for labels...');
+    const candles = chartDataRef.current;
+    const matches = [];
+
+    candles.forEach(candle => {
+      const candleTime = new Date(candle.timestamp);
+      
+      // Check each label to see if this candle falls within its pointer range
+      labelsData.forEach(label => {
+        if (!label.pointer || !Array.isArray(label.pointer) || label.pointer.length < 2) {
+          return;
+        }
+        
+        const startTime = new Date(label.pointer[0]);
+        const endTime = new Date(label.pointer[1]);
+        
+        // Check if candle timestamp falls within the label's time range
+        if (candleTime >= startTime && candleTime <= endTime) {
+          matches.push({
+            candle: candle,
+            label: label,
+            candleTime: candleTime,
+            labelTimeRange: [startTime, endTime]
+          });
+        }
+      });
+    });
+
+    console.log(`🎯 Found ${matches.length} matching candles:`, matches);
+    setMatchingLabels(matches);
+    // DEBUG: Log matchingLabels after filtering
+    console.log('matchingLabels after filtering:', matches);
+  }, [labelsData, chartDataRef?.current]);
+
+  // Handle toggle changes and update chart markers
+  useEffect(() => {
+    if (!chartRef?.current || !priceSeriesRef?.current) {
+      return;
+    }
+
+    console.log('🔄 Updating chart markers:', { showTjrHighs, showTjrLows });
+    
+    // Filter labels based on toggle states
+    const visibleLabels = matchingLabels.filter(match => {
+      if (match.label.label === 'tjr_high' && showTjrHighs) return true;
+      if (match.label.label === 'tjr_low' && showTjrLows) return true;
+      return false;
+    });
+
+    console.log(`📌 Will show ${visibleLabels.length} markers on chart`);
+    
+    // Trigger the main chart highlighting update which now includes TJR markers
+    const updateEvent = new CustomEvent('updateChartHighlights');
+    document.dispatchEvent(updateEvent);
+    
+  }, [showTjrHighs, showTjrLows, matchingLabels, chartRef?.current, priceSeriesRef?.current]);
+
+
+
+  return (
+    <div 
+      className={`rounded-lg shadow-md transition-colors duration-200 ${
+        isDarkMode ? 'bg-gray-800' : 'bg-white'
+      }`}
+      data-tjr-labels={JSON.stringify({ showTjrHighs, showTjrLows, matchingLabels })}
+    >
+      <div className={`px-6 py-4 border-b transition-colors duration-200 ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <h3 className={`text-lg font-semibold ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>TJR Markers</h3>
+            <InfoTooltip id="tjr-labels" content={
+              <div>
+                <p className="font-semibold mb-2">🏷️ TJR Trading Markers</p>
+                <p className="mb-2">Visual markers showing trading point indicators:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>TJR High:</strong> Green "T" symbol above candles for significant highs</li>
+                  <li><strong>TJR Low:</strong> Red "⊥" symbol below candles for significant lows</li>
+                  <li><strong>Both High & Low:</strong> Purple "T" symbol when both occur</li>
+                  <li><strong>Toggle Display:</strong> Show/hide each marker type independently</li>
+                </ul>
+                <p className="mt-2 text-xs">Toggle these on to see "T" symbol markers on your chart instead of color changes.</p>
+              </div>
+            } isDarkMode={isDarkMode} />
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {/* TJR Highs Toggle */}
+            <div className="flex items-center gap-2">
+              <label className={`text-sm font-medium ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                TJR Highs:
+              </label>
+              <button
+                onClick={() => {
+                  console.log('TJR Highs toggle clicked. Previous:', showTjrHighs, 'Next:', !showTjrHighs);
+                  setShowTjrHighs(!showTjrHighs);
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  showTjrHighs
+                    ? 'bg-green-600 focus:ring-green-500'
+                    : isDarkMode
+                      ? 'bg-gray-600 focus:ring-gray-500'
+                      : 'bg-gray-200 focus:ring-gray-500'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showTjrHighs ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs ${
+                showTjrHighs ? 'text-green-600' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {showTjrHighs ? 'ON' : 'OFF'}
+              </span>
+            </div>
+
+            {/* TJR Lows Toggle */}
+            <div className="flex items-center gap-2">
+              <label className={`text-sm font-medium ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                TJR Lows:
+              </label>
+              <button
+                onClick={() => {
+                  console.log('TJR Lows toggle clicked. Previous:', showTjrLows, 'Next:', !showTjrLows);
+                  setShowTjrLows(!showTjrLows);
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  showTjrLows
+                    ? 'bg-red-600 focus:ring-red-500'
+                    : isDarkMode
+                      ? 'bg-gray-600 focus:ring-gray-500'
+                      : 'bg-gray-200 focus:ring-gray-500'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showTjrLows ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs ${
+                showTjrLows ? 'text-red-600' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {showTjrLows ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {(showTjrHighs || showTjrLows) && (
+          <div className={`mt-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Displaying: {showTjrHighs ? 'TJR High "T" markers' : ''} {showTjrHighs && showTjrLows ? ' & ' : ''} {showTjrLows ? 'TJR Low "⊥" markers' : ''} on chart
           </div>
         )}
       </div>
-    );
-  }
-
-  return (
-    <div className={`mb-4 p-4 rounded border text-sm ${
-      isDarkMode ? 'bg-gray-900 border-blue-700 text-blue-200' : 'bg-blue-50 border-blue-300 text-blue-800'
-    }`}>
-      <b>🔗 Labels Table Test</b><br/>
-      {content}
+      
+      {/* Status Display */}
+      {(loading || error || labelsData || matchingLabels.length > 0) && (
+        <div className={`px-6 py-3 border-t transition-colors duration-200 ${
+          isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className="space-y-2">
+            {loading && (
+              <div className={`text-sm ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                🔄 Loading labels data...
+              </div>
+            )}
+            
+            {error && (
+              <div className={`text-sm ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                ❌ Error: {error}
+              </div>
+            )}
+            
+            {labelsData && !loading && !error && (
+              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                📊 Labels loaded: {labelsData.length} total 
+                ({labelsData.filter(l => l.label === 'tjr_high').length} highs, {labelsData.filter(l => l.label === 'tjr_low').length} lows)
+              </div>
+            )}
+            
+            {matchingLabels.length > 0 && (
+              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                🎯 Found {matchingLabels.length} matching candles in current chart
+                ({matchingLabels.filter(m => m.label.label === 'tjr_high').length} highs, {matchingLabels.filter(m => m.label.label === 'tjr_low').length} lows)
+              </div>
+            )}
+            
+            {(showTjrHighs || showTjrLows) && matchingLabels.length > 0 && (
+              <div className={`mt-3 p-2 rounded border ${
+                isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'
+              }`}>
+                <div className={`text-xs font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  📊 TJR Marker Legend:
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {showTjrHighs && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">T</div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR High (above candle)</span>
+                    </div>
+                  )}
+                  {showTjrLows && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">⊥</div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR Low (below candle)</span>
+                    </div>
+                  )}
+                  {showTjrHighs && showTjrLows && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">T</div>
+                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Both High & Low</span>
+                    </div>
+                  )}
+                </div>
+                <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  💡 TJR markers now appear as "T" symbols above/below candles instead of color changes
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -690,6 +936,312 @@ const TradingChartDashboard = ({
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
 
+  const updateSelectionStats = useCallback(() => {
+    const currentSelection = selectedCandles.filter(c => 
+      c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+    );
+    
+    if (currentSelection.length === 0) {
+      setSelectionStats(null);
+      return;
+    }
+    
+    const prices = currentSelection.map(c => c.close);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const totalChange = currentSelection.reduce((sum, c) => sum + c.change, 0);
+    const avgChange = totalChange / currentSelection.length;
+    
+    const timestamps = currentSelection.map(c => new Date(c.timestamp).getTime());
+    const timeRange = Math.max(...timestamps) - Math.min(...timestamps);
+    const timeRangeStr = formatTimeRange(timeRange);
+    
+    setSelectionStats({
+      count: currentSelection.length,
+      avgPrice,
+      minPrice,
+      maxPrice,
+      totalChange,
+      avgChange,
+      timeRange: timeRangeStr,
+      bullish: currentSelection.filter(c => c.change > 0).length,
+      bearish: currentSelection.filter(c => c.change < 0).length,
+    });
+  }, [selectedCandles, selectedSymbol, selectedTimeframe]);
+
+  const updateChartHighlights = useCallback(() => {
+    // DEBUG: Log toggle states
+    const tjrLabelsElement = document.querySelector('[data-tjr-labels]');
+    let tjrState = { showTjrHighs: false, showTjrLows: false, matchingLabels: [] };
+    if (tjrLabelsElement) {
+      try {
+        tjrState = JSON.parse(tjrLabelsElement.getAttribute('data-tjr-labels'));
+      } catch (e) {
+        console.warn('Could not parse TJR labels state');
+      }
+    }
+    console.log('--- updateChartHighlights DEBUG ---');
+    console.log('showTjrHighs:', tjrState.showTjrHighs, 'showTjrLows:', tjrState.showTjrLows);
+    
+    if (!chartRef.current || !priceSeriesRef.current || !chartDataRef.current) {
+      console.log('⚠️ Missing dependencies for chart highlights');
+      return;
+    }
+
+    try {
+      // Get selected candles for current symbol/timeframe
+      const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
+        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+      );
+
+      console.log('🎯 Current selection for chart:', {
+        totalSelected: selectedCandles.length,
+        currentSymbolTimeframe: currentSymbolTimeframeSelection.length,
+        selectedCandles: currentSymbolTimeframeSelection.map(c => c.timestamp)
+      });
+
+      // Get TJR labels state and matching labels
+      const tjrLabelsElement = document.querySelector('[data-tjr-labels]');
+      let tjrState = { showTjrHighs: false, showTjrLows: false, matchingLabels: [] };
+      
+      if (tjrLabelsElement) {
+        try {
+          tjrState = JSON.parse(tjrLabelsElement.getAttribute('data-tjr-labels'));
+          console.log('🎛️ TJR State:', tjrState);
+        } catch (e) {
+          console.warn('Could not parse TJR labels state');
+        }
+      } else {
+        console.warn('⚠️ TJR labels element not found');
+      }
+
+      // Create TJR labels lookup map
+      const tjrLabelsByTimestamp = {};
+      if (tjrState.matchingLabels && Array.isArray(tjrState.matchingLabels)) {
+        tjrState.matchingLabels.forEach(match => {
+          if (match.candle && match.label) {
+            const timestamp = match.candle.timestamp;
+            if (!tjrLabelsByTimestamp[timestamp]) {
+              tjrLabelsByTimestamp[timestamp] = [];
+            }
+            tjrLabelsByTimestamp[timestamp].push(match.label);
+          }
+        });
+      }
+      
+      // Update candlestick data with ONLY selected candle highlighting (no TJR colors)
+      const selectedTimestamps = new Set(currentSymbolTimeframeSelection.map(c => c.timestamp));
+      
+      const highlightedCandlestickData = chartDataRef.current.map(candle => {
+        const isSelected = selectedTimestamps.has(candle.timestamp);
+        const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
+        
+        const baseData = {
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        };
+
+        // Only highlight selected candles with blue color
+        if (isSelected) {
+          return {
+            ...baseData,
+            color: '#3b82f6', // Blue body
+            wickColor: isBullish ? '#22c55e' : '#ef4444', // Keep original wick colors
+            borderColor: '#2563eb' // Darker blue border
+          };
+        }
+
+        return baseData;
+      });
+
+      // Update the series data
+      if (chartType === 'candlestick') {
+        priceSeriesRef.current.setData(highlightedCandlestickData);
+      } else {
+        // For line and area charts, just update the data without color properties
+        const simpleData = chartDataRef.current.map(candle => ({
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          value: parseFloat(candle.close)
+        }));
+        priceSeriesRef.current.setData(simpleData);
+      }
+
+      // Create TJR markers array - positioned at actual highest/lowest price points within ranges
+      const tjrMarkers = [];
+      
+      if (tjrState.showTjrHighs || tjrState.showTjrLows) {
+        // Group matching labels by their original label (not by timestamp)
+        const labelGroups = {};
+        
+        if (tjrState.matchingLabels && Array.isArray(tjrState.matchingLabels)) {
+          tjrState.matchingLabels.forEach(match => {
+            const labelKey = `${match.label.label}_${match.label.pointer[0]}_${match.label.pointer[1]}`;
+            if (!labelGroups[labelKey]) {
+              labelGroups[labelKey] = {
+                label: match.label,
+                candles: []
+              };
+            }
+            labelGroups[labelKey].candles.push(match.candle);
+          });
+        }
+        
+        // For each label group, find the actual high/low point
+        Object.values(labelGroups).forEach(group => {
+          const { label, candles } = group;
+          
+          if (label.label === 'tjr_high' && tjrState.showTjrHighs) {
+            // Find the candle with the highest high price in this group
+            let highestCandle = candles[0];
+            let highestPrice = parseFloat(highestCandle.high);
+            
+            candles.forEach(candle => {
+              const candleHigh = parseFloat(candle.high);
+              if (candleHigh > highestPrice) {
+                highestPrice = candleHigh;
+                highestCandle = candle;
+              }
+            });
+            
+            // Add marker at the actual high point
+            const candleTime = Math.floor(new Date(highestCandle.timestamp).getTime() / 1000);
+            tjrMarkers.push({
+              time: candleTime,
+              position: 'aboveBar',
+              color: '#22c55e',
+              shape: 'circle',
+              text: 'T',
+              size: 1
+            });
+            
+            console.log(`🔝 TJR High marker at ${highestCandle.timestamp} (price: ${highestPrice})`);
+          }
+          
+          if (label.label === 'tjr_low' && tjrState.showTjrLows) {
+            // Find the candle with the lowest low price in this group
+            let lowestCandle = candles[0];
+            let lowestPrice = parseFloat(lowestCandle.low);
+            
+            candles.forEach(candle => {
+              const candleLow = parseFloat(candle.low);
+              if (candleLow < lowestPrice) {
+                lowestPrice = candleLow;
+                lowestCandle = candle;
+              }
+            });
+            
+            // Add marker at the actual low point
+            const candleTime = Math.floor(new Date(lowestCandle.timestamp).getTime() / 1000);
+            tjrMarkers.push({
+              time: candleTime,
+              position: 'belowBar',
+              color: '#ef4444',
+              shape: 'circle',
+              text: '⊥', // Inverted T symbol
+              size: 1
+            });
+            
+            console.log(`🔻 TJR Low marker at ${lowestCandle.timestamp} (price: ${lowestPrice})`);
+          }
+        });
+      }
+
+      // Handle marker updates - always call createSeriesMarkers with current markers
+      if (!priceSeriesRef.current) {
+        console.warn('⚠️ No price series reference available for markers');
+        return;
+      }
+
+      // This will set or clear markers as needed
+      createSeriesMarkers(priceSeriesRef.current, tjrMarkers);
+      console.log('After createSeriesMarkers, priceSeriesRef.current:', priceSeriesRef.current);
+      if (chartRef.current && chartRef.current.series) {
+        // Try to log all series if possible (not always available in API)
+        try {
+          console.log('All series on chart:', chartRef.current.series);
+        } catch (e) {
+          console.log('Could not log all series:', e);
+        }
+      }
+
+      // Force chart redraw to ensure markers are visually updated
+      if (chartRef.current && chartRef.current.timeScale) {
+        chartRef.current.timeScale().fitContent();
+      }
+
+      if (tjrMarkers.length > 0) {
+        console.log(`✅ TJR markers set with ${tjrMarkers.length} items`);
+      } else {
+        console.log('📝 TJR markers cleared');
+        // Forcibly remove and re-add the price series after a short delay to clear stuck markers
+        setTimeout(() => {
+          if (chartRef.current && priceSeriesRef.current) {
+            try {
+              console.log('⚠️ Forcibly removing and re-adding price series to clear stuck markers.');
+              chartRef.current.removeSeries(priceSeriesRef.current);
+              // Re-add the series
+              let newSeries;
+              if (chartType === 'candlestick') {
+                newSeries = chartRef.current.addSeries(CandlestickSeries, {
+                  upColor: '#22c55e',
+                  downColor: '#ef4444',
+                  borderVisible: false,
+                  wickUpColor: '#22c55e',
+                  wickDownColor: '#ef4444',
+                });
+                newSeries.setData(chartDataRef.current.map(candle => ({
+                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+                  open: parseFloat(candle.open),
+                  high: parseFloat(candle.high),
+                  low: parseFloat(candle.low),
+                  close: parseFloat(candle.close),
+                })));
+              } else if (chartType === 'line') {
+                newSeries = chartRef.current.addSeries(LineSeries, {
+                  color: isDarkMode ? '#60a5fa' : '#1d4ed8',
+                  lineWidth: 2,
+                });
+                newSeries.setData(chartDataRef.current.map(candle => ({
+                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+                  value: parseFloat(candle.close),
+                })));
+              } else {
+                newSeries = chartRef.current.addSeries(AreaSeries, {
+                  topColor: 'rgba(59,130,246,0.4)',
+                  bottomColor: 'rgba(59,130,246,0.0)',
+                  lineColor: isDarkMode ? '#60a5fa' : '#1d4ed8',
+                  lineWidth: 2,
+                });
+                newSeries.setData(chartDataRef.current.map(candle => ({
+                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+                  value: parseFloat(candle.close),
+                })));
+              }
+              priceSeriesRef.current = newSeries;
+              console.log('✅ Re-added price series. New ref:', priceSeriesRef.current);
+              chartRef.current.timeScale().fitContent();
+            } catch (e) {
+              console.error('❌ Error forcibly removing/re-adding series:', e);
+            }
+          }
+        }, 200);
+      }
+
+      // Update selection statistics
+      updateSelectionStats();
+      
+      console.log(`✅ Updated chart with ${currentSymbolTimeframeSelection.length} highlighted candles and ${tjrMarkers.length} TJR markers`);
+
+    } catch (error) {
+      console.error('❌ Error updating chart highlights:', error);
+      console.error('Error details:', error.stack);
+    }
+  }, [selectedCandles, selectedSymbol, selectedTimeframe, chartType, updateSelectionStats]);
+
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
       console.log('🔄 Chart data fetch triggered:', selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange, fetchMode, dateRangeType, startDate, endDate); // Debug log
@@ -730,9 +1282,9 @@ const TradingChartDashboard = ({
   useEffect(() => {
     return () => {
       if (chartRef.current) {
-              chartRef.current.remove();
-      chartRef.current = null;
-      priceSeriesRef.current = null;
+        chartRef.current.remove();
+        chartRef.current = null;
+        priceSeriesRef.current = null;
       }
     };
   }, []);
@@ -762,85 +1314,23 @@ const TradingChartDashboard = ({
     }
   }, [chartData]);
 
+  // Listen for TJR label updates
+  useEffect(() => {
+    const handleChartUpdate = () => {
+      console.log('🔄 TJR labels updated, refreshing chart highlights...');
+      setTimeout(() => {
+        updateChartHighlights();
+      }, 50);
+    };
+
+    document.addEventListener('updateChartHighlights', handleChartUpdate);
+    
+    return () => {
+      document.removeEventListener('updateChartHighlights', handleChartUpdate);
+    };
+  }, [updateChartHighlights]); // Remove updateChartHighlights from dependency array since it's a stable function
 
 
-  const updateChartHighlights = () => {
-    console.log('🔍 updateChartHighlights called', {
-      hasChart: !!chartRef.current,
-      hasPriceSeries: !!priceSeriesRef.current,
-      hasOriginalData: !!chartDataRef.current,
-      originalDataLength: chartDataRef.current?.length || 0,
-      selectedCandlesCount: selectedCandles.length,
-      selectedSymbol,
-      selectedTimeframe
-    });
-
-    if (!chartRef.current || !priceSeriesRef.current || !chartDataRef.current) {
-      console.log('⚠️ Missing dependencies for chart highlights');
-      return;
-    }
-
-    try {
-      // Get selected candles for current symbol/timeframe
-      const currentSymbolTimeframeSelection = selectedCandles.filter(c => 
-        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
-      );
-
-      console.log('🎯 Current selection for chart:', {
-        totalSelected: selectedCandles.length,
-        currentSymbolTimeframe: currentSymbolTimeframeSelection.length,
-        selectedCandles: currentSymbolTimeframeSelection.map(c => c.timestamp)
-      });
-
-      // Create highlighted candlestick data
-      const selectedTimestamps = new Set(currentSymbolTimeframeSelection.map(c => c.timestamp));
-      
-      const highlightedCandlestickData = chartDataRef.current.map(candle => {
-        const isSelected = selectedTimestamps.has(candle.timestamp);
-        const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
-        const baseData = {
-          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-          open: parseFloat(candle.open),
-          high: parseFloat(candle.high),
-          low: parseFloat(candle.low),
-          close: parseFloat(candle.close),
-        };
-
-        // If selected, add blue highlighting colors but preserve original wick colors
-        if (isSelected) {
-          return {
-            ...baseData,
-            color: '#3b82f6', // Blue body
-            wickColor: isBullish ? '#22c55e' : '#ef4444', // Keep original wick colors (green for bull, red for bear)
-            borderColor: '#2563eb' // Darker blue border
-          };
-        }
-
-        return baseData;
-      });
-
-      // Update the series data with highlighted candles (only for candlestick charts)
-      if (chartType === 'candlestick') {
-        priceSeriesRef.current.setData(highlightedCandlestickData);
-      } else {
-        // For line and area charts, just update the data without color properties
-        const simpleData = chartDataRef.current.map(candle => ({
-          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-          value: parseFloat(candle.close)
-        }));
-        priceSeriesRef.current.setData(simpleData);
-      }
-
-      // Update selection statistics
-      updateSelectionStats();
-      
-      console.log(`✅ Updated chart with ${currentSymbolTimeframeSelection.length} highlighted candles`);
-
-    } catch (error) {
-      console.error('❌ Error updating chart highlights:', error);
-      console.error('Error details:', error.stack);
-    }
-  };
 
   const fetchChartData = async () => {
     setLoading(true);
@@ -964,6 +1454,7 @@ const TradingChartDashboard = ({
     // Clear any existing chart
     if (chartRef.current) {
       console.log('🧹 Cleaning up existing chart');
+      
       chartRef.current.remove();
       chartRef.current = null;
       priceSeriesRef.current = null;
@@ -1081,7 +1572,7 @@ const TradingChartDashboard = ({
         });
         priceSeries.setData(candlestickData.map(d => ({ time: d.time, value: d.close })));
       }
-
+      console.log('🆕 Created new price series:', priceSeries);
       // Store price series reference for highlighting
       priceSeriesRef.current = priceSeries;
 
@@ -1100,10 +1591,14 @@ const TradingChartDashboard = ({
 
       // Handle resize
       const handleResize = () => {
-        if (chartContainerRef.current) {
+        if (chartContainerRef.current && chartRef.current) {
           const newWidth = chartContainerRef.current.clientWidth || 800;
           console.log('📏 Resizing chart to width:', newWidth);
-          chart.applyOptions({ width: newWidth });
+          try {
+            chartRef.current.applyOptions({ width: newWidth });
+          } catch (error) {
+            console.warn('⚠️ Could not resize chart (might be disposed):', error);
+          }
         }
       };
 
@@ -1112,7 +1607,11 @@ const TradingChartDashboard = ({
       // Cleanup function
       return () => {
         window.removeEventListener('resize', handleResize);
-        chart.remove();
+        try {
+          chart.remove();
+        } catch (error) {
+          console.warn('⚠️ Could not remove chart (might be already disposed):', error);
+        }
       };
 
       console.log('🎉 Interactive chart created successfully:', data.length, 'candles');
@@ -1176,50 +1675,6 @@ const TradingChartDashboard = ({
     if (!isSelectionMode) {
       setSelectionModeType('click');
     }
-  };
-  
-  const updateSelectionStats = () => {
-    const currentSelection = selectedCandles.filter(c => 
-      c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
-    );
-    
-    if (currentSelection.length === 0) {
-      setSelectionStats(null);
-      return;
-    }
-    
-    const prices = currentSelection.map(c => c.close);
-    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const totalChange = currentSelection.reduce((sum, c) => sum + c.change, 0);
-    const avgChange = totalChange / currentSelection.length;
-    
-    const timestamps = currentSelection.map(c => new Date(c.timestamp).getTime());
-    const timeRange = Math.max(...timestamps) - Math.min(...timestamps);
-    const timeRangeStr = formatTimeRange(timeRange);
-    
-    setSelectionStats({
-      count: currentSelection.length,
-      avgPrice,
-      minPrice,
-      maxPrice,
-      totalChange,
-      avgChange,
-      timeRange: timeRangeStr,
-      bullish: currentSelection.filter(c => c.change > 0).length,
-      bearish: currentSelection.filter(c => c.change < 0).length,
-    });
-  };
-  
-  const formatTimeRange = (milliseconds) => {
-    const minutes = Math.floor(milliseconds / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    return `${minutes}m`;
   };
   
   const handleRangeSelection = (endIndex, endX) => {
@@ -1587,9 +2042,6 @@ const TradingChartDashboard = ({
         </div>
       </div>
 
-      {/* --- LABELS TEST BOX --- */}
-      <LabelsTestBox isDarkMode={isDarkMode} />
-
       {/* Data Selection & Controls - Using Consistent Component */}
       <DataSelectionControls 
         handleRefresh={fetchChartData}
@@ -1902,6 +2354,14 @@ const TradingChartDashboard = ({
           )}
         </div>
       </div>
+
+      {/* TJR Labels Toggle Controls */}
+      <TjrLabelsControl 
+        isDarkMode={isDarkMode} 
+        chartRef={chartRef}
+        priceSeriesRef={priceSeriesRef}
+        chartDataRef={chartDataRef}
+      />
 
       {/* OHLC Data Summary Table */}
       {chartData?.data && (
