@@ -107,3 +107,23 @@ The app expects a backend API at `http://localhost:8000/api/trading` with endpoi
 - Storybook for component documentation
 - Performance optimizations with React.memo
 - Additional vector visualization modes 
+
+## Labeled Dataset & Chart Label Visualization
+
+This project now includes a workflow for creating and visualizing labeled trading data directly on the chart:
+
+- **Labeled Dataset Creation:**
+  - The backend and preprocessing pipeline generate a labeled dataset, identifying significant trading points (e.g., TJR Highs and Lows) for each symbol and timeframe.
+  - For each label, a time range (pointer) is provided, and the actual high/low candle within that range is determined for precise marker placement.
+  - **Current status:** The SPY 1H dataset is fully labeled for both `tjr_high` and `tjr_low` events.
+
+- **Chart Visualization:**
+  - When viewing a chart (e.g., SPY 1H), the frontend fetches these labels and overlays them as markers:
+    - Green "T" markers above candles for TJR Highs
+    - Red "⊥" markers below candles for TJR Lows
+  - Marker toggles allow users to show/hide each label type interactively.
+  - The marker system is robust: toggling always displays only the correct markers, with no ghosting or layering, thanks to a full series/marker rebuild on each update.
+
+- **How it works in code:**
+  - The chart component receives the labeled data, groups it by event, and finds the actual high/low within each labeled region.
+  - Markers are built fresh on every toggle or data change, ensuring the chart always reflects the current labeled dataset and user preferences. 
