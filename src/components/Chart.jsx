@@ -1058,25 +1058,58 @@ const TradingChartDashboard = ({
         return baseData;
       });
 
-      // Update the series data
-      if (chartType === 'candlestick') {
-        priceSeriesRef.current.setData(highlightedCandlestickData);
-      } else {
-        // For line and area charts, just update the data without color properties
-        const simpleData = chartDataRef.current.map(candle => ({
-          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-          value: parseFloat(candle.close)
-        }));
-        priceSeriesRef.current.setData(simpleData);
+      // --- MARKER & SERIES UPDATE STRATEGY ---
+      // Always rebuild the price series from scratch, then set a SINGLE combined
+      // marker array (highs+ lows depending on toggles). This guarantees we never
+      // layer marker primitives and therefore prevents ghost markers.
+      if (!chartRef.current) {
+        console.warn('⚠️ Chart reference missing – cannot update markers.');
+        return;
       }
 
-      // Create TJR markers array - positioned at actual highest/lowest price points within ranges
+      // 1️⃣ Remove existing series (if it still exists)
+      try {
+        if (priceSeriesRef.current) {
+          console.log('🧹 Removing existing price series to ensure a clean marker state…');
+          chartRef.current.removeSeries(priceSeriesRef.current);
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not remove price series (may have been removed already):', e);
+      }
+
+      // 2️⃣ Re-add a fresh series of the correct type
+      let newSeries;
+      if (chartType === 'candlestick') {
+        newSeries = chartRef.current.addSeries(CandlestickSeries, {
+          upColor: '#22c55e',
+          downColor: '#ef4444',
+          borderVisible: false,
+          wickUpColor: '#22c55e',
+          wickDownColor: '#ef4444',
+        });
+        newSeries.setData(highlightedCandlestickData);
+      } else if (chartType === 'line') {
+        newSeries = chartRef.current.addSeries(LineSeries, {
+          color: isDarkMode ? '#60a5fa' : '#1d4ed8',
+          lineWidth: 2,
+        });
+        newSeries.setData(highlightedCandlestickData.map(d => ({ time: d.time, value: d.close })));
+      } else {
+        newSeries = chartRef.current.addSeries(AreaSeries, {
+          topColor: 'rgba(59,130,246,0.4)',
+          bottomColor: 'rgba(59,130,246,0.0)',
+          lineColor: isDarkMode ? '#60a5fa' : '#1d4ed8',
+          lineWidth: 2,
+        });
+        newSeries.setData(highlightedCandlestickData.map(d => ({ time: d.time, value: d.close })));
+      }
+      priceSeriesRef.current = newSeries;
+
+      // --- Build the combined marker array (tjrMarkers) based on toggles and matchingLabels ---
       const tjrMarkers = [];
-      
       if (tjrState.showTjrHighs || tjrState.showTjrLows) {
         // Group matching labels by their original label (not by timestamp)
         const labelGroups = {};
-        
         if (tjrState.matchingLabels && Array.isArray(tjrState.matchingLabels)) {
           tjrState.matchingLabels.forEach(match => {
             const labelKey = `${match.label.label}_${match.label.pointer[0]}_${match.label.pointer[1]}`;
@@ -1089,16 +1122,12 @@ const TradingChartDashboard = ({
             labelGroups[labelKey].candles.push(match.candle);
           });
         }
-        
         // For each label group, find the actual high/low point
         Object.values(labelGroups).forEach(group => {
           const { label, candles } = group;
-          
           if (label.label === 'tjr_high' && tjrState.showTjrHighs) {
-            // Find the candle with the highest high price in this group
             let highestCandle = candles[0];
             let highestPrice = parseFloat(highestCandle.high);
-            
             candles.forEach(candle => {
               const candleHigh = parseFloat(candle.high);
               if (candleHigh > highestPrice) {
@@ -1106,8 +1135,6 @@ const TradingChartDashboard = ({
                 highestCandle = candle;
               }
             });
-            
-            // Add marker at the actual high point
             const candleTime = Math.floor(new Date(highestCandle.timestamp).getTime() / 1000);
             tjrMarkers.push({
               time: candleTime,
@@ -1117,15 +1144,10 @@ const TradingChartDashboard = ({
               text: 'T',
               size: 1
             });
-            
-            console.log(`🔝 TJR High marker at ${highestCandle.timestamp} (price: ${highestPrice})`);
           }
-          
           if (label.label === 'tjr_low' && tjrState.showTjrLows) {
-            // Find the candle with the lowest low price in this group
             let lowestCandle = candles[0];
             let lowestPrice = parseFloat(lowestCandle.low);
-            
             candles.forEach(candle => {
               const candleLow = parseFloat(candle.low);
               if (candleLow < lowestPrice) {
@@ -1133,108 +1155,39 @@ const TradingChartDashboard = ({
                 lowestCandle = candle;
               }
             });
-            
-            // Add marker at the actual low point
             const candleTime = Math.floor(new Date(lowestCandle.timestamp).getTime() / 1000);
             tjrMarkers.push({
               time: candleTime,
               position: 'belowBar',
               color: '#ef4444',
               shape: 'circle',
-              text: '⊥', // Inverted T symbol
+              text: '⊥',
               size: 1
             });
-            
-            console.log(`🔻 TJR Low marker at ${lowestCandle.timestamp} (price: ${lowestPrice})`);
           }
         });
       }
 
-      // Handle marker updates - always call createSeriesMarkers with current markers
-      if (!priceSeriesRef.current) {
-        console.warn('⚠️ No price series reference available for markers');
-        return;
-      }
-
-      // This will set or clear markers as needed
-      createSeriesMarkers(priceSeriesRef.current, tjrMarkers);
-      console.log('After createSeriesMarkers, priceSeriesRef.current:', priceSeriesRef.current);
-      if (chartRef.current && chartRef.current.series) {
-        // Try to log all series if possible (not always available in API)
-        try {
-          console.log('All series on chart:', chartRef.current.series);
-        } catch (e) {
-          console.log('Could not log all series:', e);
-        }
-      }
-
-      // Force chart redraw to ensure markers are visually updated
-      if (chartRef.current && chartRef.current.timeScale) {
-        chartRef.current.timeScale().fitContent();
-      }
-
+      // 3️⃣ Apply markers (single combined set)
       if (tjrMarkers.length > 0) {
-        console.log(`✅ TJR markers set with ${tjrMarkers.length} items`);
+        createSeriesMarkers(priceSeriesRef.current, tjrMarkers);
+        console.log(`✅ Applied ${tjrMarkers.length} TJR markers (combined set)`);
       } else {
-        console.log('📝 TJR markers cleared');
-        // Forcibly remove and re-add the price series after a short delay to clear stuck markers
-        setTimeout(() => {
-          if (chartRef.current && priceSeriesRef.current) {
-            try {
-              console.log('⚠️ Forcibly removing and re-adding price series to clear stuck markers.');
-              chartRef.current.removeSeries(priceSeriesRef.current);
-              // Re-add the series
-              let newSeries;
-              if (chartType === 'candlestick') {
-                newSeries = chartRef.current.addSeries(CandlestickSeries, {
-                  upColor: '#22c55e',
-                  downColor: '#ef4444',
-                  borderVisible: false,
-                  wickUpColor: '#22c55e',
-                  wickDownColor: '#ef4444',
-                });
-                newSeries.setData(chartDataRef.current.map(candle => ({
-                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-                  open: parseFloat(candle.open),
-                  high: parseFloat(candle.high),
-                  low: parseFloat(candle.low),
-                  close: parseFloat(candle.close),
-                })));
-              } else if (chartType === 'line') {
-                newSeries = chartRef.current.addSeries(LineSeries, {
-                  color: isDarkMode ? '#60a5fa' : '#1d4ed8',
-                  lineWidth: 2,
-                });
-                newSeries.setData(chartDataRef.current.map(candle => ({
-                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-                  value: parseFloat(candle.close),
-                })));
-              } else {
-                newSeries = chartRef.current.addSeries(AreaSeries, {
-                  topColor: 'rgba(59,130,246,0.4)',
-                  bottomColor: 'rgba(59,130,246,0.0)',
-                  lineColor: isDarkMode ? '#60a5fa' : '#1d4ed8',
-                  lineWidth: 2,
-                });
-                newSeries.setData(chartDataRef.current.map(candle => ({
-                  time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
-                  value: parseFloat(candle.close),
-                })));
-              }
-              priceSeriesRef.current = newSeries;
-              console.log('✅ Re-added price series. New ref:', priceSeriesRef.current);
-              chartRef.current.timeScale().fitContent();
-            } catch (e) {
-              console.error('❌ Error forcibly removing/re-adding series:', e);
-            }
-          }
-        }, 200);
+        createSeriesMarkers(priceSeriesRef.current, []);
+        console.log('📝 No TJR markers to display – cleared all markers');
       }
 
-      // Update selection statistics
+      // 4️⃣ Fit the content so the new series is rendered properly
+      try {
+        chartRef.current.timeScale().fitContent();
+      } catch (e) {
+        console.warn('⚠️ Could not fit content after series rebuild:', e);
+      }
+
+      // Update selection statistics after full rebuild
       updateSelectionStats();
-      
-      console.log(`✅ Updated chart with ${currentSymbolTimeframeSelection.length} highlighted candles and ${tjrMarkers.length} TJR markers`);
+
+      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${tjrMarkers.length}`);
 
     } catch (error) {
       console.error('❌ Error updating chart highlights:', error);
