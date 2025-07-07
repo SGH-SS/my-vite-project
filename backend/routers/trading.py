@@ -270,6 +270,18 @@ async def get_shape_similarity(
         logger.error(f"Error calculating shape similarity for {symbol}_{timeframe}_{vector_type}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/labels/{symbol}/{timeframe}", summary="Get all labels from labeled table")
+async def get_labels(db: Session = Depends(get_db), symbol: str = None, timeframe: str = None):
+    """Fetch all rows from labels.{symbol}{timeframe}_labeled table"""
+    try:
+        labels = trading_service.get_labels(db, symbol, timeframe)
+        # Return empty list if no labels found (table doesn't exist or is empty)
+        return labels
+    except Exception as e:
+        logger.error(f"Error fetching labels for {symbol}{timeframe}: {e}")
+        # Return empty list instead of 500 error for missing tables
+        return []
+
 @router.get("/labels/spy1h", summary="Get all labels from spy1h_labeled table")
 async def get_spy1h_labels(db: Session = Depends(get_db)):
     """Fetch all rows from labels.spy1h_labeled table"""
@@ -277,4 +289,13 @@ async def get_spy1h_labels(db: Session = Depends(get_db)):
         return trading_service.get_spy1h_labels(db)
     except Exception as e:
         logger.error(f"Error fetching spy1h labels: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/labels/spy1h_swings", summary="Get all swing labels from spy1h_swings table")
+async def get_spy1h_swings_labels(db: Session = Depends(get_db)):
+    """Fetch all rows from labels.spy1h_swings table"""
+    try:
+        return trading_service.get_spy1h_swings_labels(db)
+    except Exception as e:
+        logger.error(f"Error fetching swing labels for spy1h_swings: {e}")
+        return [] 

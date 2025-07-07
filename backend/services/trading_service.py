@@ -455,12 +455,82 @@ class TradingDataService:
         else:
             return "Low Diversity"
 
+    def get_labels(self, db: Session, symbol: str, timeframe: str) -> list:
+        """Fetch all rows from labels.{symbol}{timeframe}_labeled or labels.{symbol}_{timeframe}_labeled table"""
+        from config import settings
+        # Try both naming conventions
+        table_names = [
+            f"{symbol}{timeframe}_labeled",
+            f"{symbol}_{timeframe}_labeled"
+        ]
+        chosen_table = None
+        for table_name in table_names:
+            check_table_query = text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = '{settings.LABELS_SCHEMA}' 
+                    AND table_name = '{table_name}'
+                );
+            """)
+            try:
+                table_exists = db.execute(check_table_query).scalar()
+                if table_exists:
+                    chosen_table = table_name
+                    break
+            except Exception as e:
+                continue
+        if not chosen_table:
+            return []
+        try:
+            query = text(f"""
+                SELECT id, label, value, pointer
+                FROM {settings.LABELS_SCHEMA}.{chosen_table}
+                ORDER BY id
+            """)
+            result = db.execute(query)
+            rows = result.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "label": row[1],
+                    "value": row[2],
+                    "pointer": row[3],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error accessing labels table {chosen_table}: {e}")
+            return []
+
     def get_spy1h_labels(self, db: Session) -> list:
         """Fetch all rows from labels.spy1h_labeled table"""
         from config import settings
         query = text(f"""
             SELECT id, label, value, pointer
             FROM {settings.LABELS_SCHEMA}.spy1h_labeled
+            ORDER BY id
+        """)
+        result = db.execute(query)
+        rows = result.fetchall()
+        # Convert to list of dicts
+        return [
+            {
+                "id": row[0],
+                "label": row[1],
+                "value": row[2],
+                "pointer": row[3],
+            }
+            for row in rows
+        ]
+
+    def get_spy1h_swings_labels(self, db: Session) -> list:
+        """Fetch all rows from labels.spy1h_swings table"""
+        from config import settings
+        query = text(f"""
+            SELECT id, label, value, pointer
+            FROM {settings.LABELS_SCHEMA}.spy1h_swings
             ORDER BY id
         """)
         result = db.execute(query)

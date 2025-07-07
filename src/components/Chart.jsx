@@ -575,15 +575,49 @@ const DataSelectionControls = ({
 const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }) => {
   const [showTjrHighs, setShowTjrHighs] = useState(false);
   const [showTjrLows, setShowTjrLows] = useState(false);
+  // Swing toggles
+  const [showSwingHighs, setShowSwingHighs] = useState(false);
+  const [showSwingLows, setShowSwingLows] = useState(false);
+  // Swing label data
+  const [swingLabelsData, setSwingLabelsData] = useState(null);
+  const [matchingSwingLabels, setMatchingSwingLabels] = useState([]);
   const [labelsData, setLabelsData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [matchingLabels, setMatchingLabels] = useState([]);
+  const [hasLabelsTable, setHasLabelsTable] = useState(false);
+  const [availableLabeledTables, setAvailableLabeledTables] = useState([]);
 
   const {
     selectedSymbol,
     selectedTimeframe
   } = useTrading();
+
+  // Check which labeled tables are available
+  useEffect(() => {
+    const checkAvailableTables = async () => {
+      const spyTimeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+      const available = [];
+      
+      for (const tf of spyTimeframes) {
+        try {
+          const response = await fetch(`http://localhost:8000/api/trading/labels/spy/${tf}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+              available.push(`spy${tf}_labeled`);
+            }
+          }
+        } catch (err) {
+          // Silently ignore errors for table checking
+        }
+      }
+      
+      setAvailableLabeledTables(available);
+    };
+    
+    checkAvailableTables();
+  }, []);
 
   // Fetch labels data when component mounts
   useEffect(() => {
@@ -595,12 +629,35 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
       
       try {
         // Build the API endpoint based on symbol and timeframe
-        const endpoint = `http://localhost:8000/api/trading/labels/${selectedSymbol}${selectedTimeframe}`;
+        const endpoint = `http://localhost:8000/api/trading/labels/${selectedSymbol}/${selectedTimeframe}`;
         console.log('🏷️ Fetching labels from:', endpoint);
         
         const response = await fetch(endpoint);
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          // If the generic endpoint fails, try the legacy spy1h endpoint as fallback
+          if (selectedSymbol === 'spy' && selectedTimeframe === '1h') {
+            const fallbackEndpoint = 'http://localhost:8000/api/trading/labels/spy1h';
+            console.log('🔄 Trying fallback endpoint:', fallbackEndpoint);
+            const fallbackResponse = await fetch(fallbackEndpoint);
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (Array.isArray(fallbackData)) {
+                setLabelsData(fallbackData);
+                setHasLabelsTable(fallbackData.length > 0);
+                console.log('📊 Labels stats (fallback):', {
+                  total: fallbackData.length,
+                  tjr_high: fallbackData.filter(l => l.label === 'tjr_high').length,
+                  tjr_low: fallbackData.filter(l => l.label === 'tjr_low').length
+                });
+                return;
+              }
+            }
+          }
+          // Don't throw error for 404/500, just set empty data
+          console.warn(`Labels endpoint returned ${response.status} for ${selectedSymbol}${selectedTimeframe}`);
+          setLabelsData([]);
+          setHasLabelsTable(false);
+          return;
         }
         
         const data = await response.json();
@@ -608,6 +665,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
         
         if (Array.isArray(data)) {
           setLabelsData(data);
+          setHasLabelsTable(true);
           console.log('📊 Labels stats:', {
             total: data.length,
             tjr_high: data.filter(l => l.label === 'tjr_high').length,
@@ -615,15 +673,22 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
           });
         } else {
           setLabelsData([]);
+          setHasLabelsTable(false);
         }
         
-      } catch (err) {
-        console.error('❌ Error fetching labels:', err);
-        setError(err.message);
-        setLabelsData([]);
-      } finally {
-        setLoading(false);
-      }
+              } catch (err) {
+          console.error('❌ Error fetching labels:', err);
+          // Only set error for actual network/parsing errors, not missing tables
+          if (err.message.includes('Failed to fetch') || err.message.includes('JSON')) {
+            setError(err.message);
+          } else {
+            setError(null); // Clear any previous errors
+          }
+          setLabelsData([]);
+          setHasLabelsTable(false);
+        } finally {
+          setLoading(false);
+        }
     };
 
     fetchLabelsData();
@@ -636,7 +701,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
       return;
     }
 
-    console.log('🔍 Scanning candles for labels...');
+    console.log('🔍 Scanning candles for TJR labels...');
     const candles = chartDataRef.current;
     const matches = [];
 
@@ -664,11 +729,67 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
       });
     });
 
-    console.log(`🎯 Found ${matches.length} matching candles:`, matches);
+    console.log(`🎯 Found ${matches.length} matching TJR candles:`, matches);
     setMatchingLabels(matches);
-    // DEBUG: Log matchingLabels after filtering
-    console.log('matchingLabels after filtering:', matches);
   }, [labelsData, chartDataRef?.current]);
+
+  // Fetch swing labels for spy1h
+  useEffect(() => {
+    if (selectedSymbol === 'spy' && selectedTimeframe === '1h') {
+      const fetchSwingLabels = async () => {
+        try {
+          const endpoint = 'http://localhost:8000/api/trading/labels/spy1h_swings';
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            setSwingLabelsData(Array.isArray(data) ? data : []);
+          } else {
+            setSwingLabelsData([]);
+          }
+        } catch (err) {
+          setSwingLabelsData([]);
+        }
+      };
+      fetchSwingLabels();
+    } else {
+      setSwingLabelsData(null);
+    }
+  }, [selectedSymbol, selectedTimeframe]);
+
+  // Scan chart candles for swing markers
+  useEffect(() => {
+    if (!swingLabelsData || !chartDataRef?.current) {
+      setMatchingSwingLabels([]);
+      return;
+    }
+    
+    console.log('🔍 Scanning candles for swing markers...');
+    const candles = chartDataRef.current;
+    const matches = [];
+    
+    swingLabelsData.forEach(label => {
+      if (!label.pointer || !Array.isArray(label.pointer) || label.pointer.length < 1) return;
+      
+      const labelMillis = new Date(label.pointer[0]).getTime();
+      
+      candles.forEach(candle => {
+        const candleMillis = new Date(candle.timestamp).getTime();
+        if (candleMillis === labelMillis) {
+          matches.push({ candle, label, candleMillis, labelMillis });
+          console.log(`🟦 Matched swing marker: label ${label.label} at ${label.pointer[0]} (${labelMillis}) to candle at ${candle.timestamp} (${candleMillis})`);
+        }
+      });
+    });
+    
+    console.log('🟦 Swing marker matching summary:', { 
+      totalSwingLabels: swingLabelsData.length, 
+      totalCandles: candles.length,
+      matches: matches.length,
+      swingHighs: matches.filter(m => m.label.label === 'swing_high').length,
+      swingLows: matches.filter(m => m.label.label === 'swing_low').length
+    });
+    setMatchingSwingLabels(matches);
+  }, [swingLabelsData, chartDataRef?.current]);
 
   // Handle toggle changes and update chart markers
   useEffect(() => {
@@ -676,22 +797,26 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
       return;
     }
 
-    console.log('🔄 Updating chart markers:', { showTjrHighs, showTjrLows });
-    
-    // Filter labels based on toggle states
-    const visibleLabels = matchingLabels.filter(match => {
-      if (match.label.label === 'tjr_high' && showTjrHighs) return true;
-      if (match.label.label === 'tjr_low' && showTjrLows) return true;
-      return false;
+    console.log('🔄 Updating chart markers:', { 
+      showTjrHighs, 
+      showTjrLows, 
+      showSwingHighs, 
+      showSwingLows,
+      tjrMatches: matchingLabels.length,
+      swingMatches: matchingSwingLabels.length 
     });
-
-    console.log(`📌 Will show ${visibleLabels.length} markers on chart`);
     
-    // Trigger the main chart highlighting update which now includes TJR markers
+    // Trigger the main chart highlighting update which now includes both TJR and swing markers
     const updateEvent = new CustomEvent('updateChartHighlights');
     document.dispatchEvent(updateEvent);
     
-  }, [showTjrHighs, showTjrLows, matchingLabels, chartRef?.current, priceSeriesRef?.current]);
+    // Fit content
+    try { 
+      chartRef.current.timeScale().fitContent(); 
+    } catch (e) {
+      console.warn('Could not fit content:', e);
+    }
+  }, [showTjrHighs, showTjrLows, showSwingHighs, showSwingLows, matchingLabels, matchingSwingLabels, chartRef?.current, priceSeriesRef?.current]);
 
 
 
@@ -700,7 +825,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
       className={`rounded-lg shadow-md transition-colors duration-200 ${
         isDarkMode ? 'bg-gray-800' : 'bg-white'
       }`}
-      data-tjr-labels={JSON.stringify({ showTjrHighs, showTjrLows, matchingLabels })}
+      data-tjr-labels={JSON.stringify({ showTjrHighs, showTjrLows, matchingLabels, showSwingHighs, showSwingLows, matchingSwingLabels })}
     >
       <div className={`px-6 py-4 border-b transition-colors duration-200 ${
         isDarkMode ? 'border-gray-700' : 'border-gray-200'
@@ -709,22 +834,35 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
           <div className="flex items-center">
             <h3 className={`text-lg font-semibold ${
               isDarkMode ? 'text-white' : 'text-gray-900'
-            }`}>TJR Markers</h3>
+            }`}>
+              TJR & Swing Markers
+              {hasLabelsTable && (
+                <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                  ✅ Available
+                </span>
+              )}
+              {!hasLabelsTable && !loading && !error && (
+                <span className="ml-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                  ⚠️ No Data
+                </span>
+              )}
+            </h3>
             <InfoTooltip id="tjr-labels" content={
               <div>
-                <p className="font-semibold mb-2">🏷️ TJR Trading Markers</p>
+                <p className="font-semibold mb-2">🏷️ TJR & Swing Trading Markers</p>
                 <p className="mb-2">Visual markers showing trading point indicators:</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
                   <li><strong>TJR High:</strong> Green "T" symbol above candles for significant highs</li>
                   <li><strong>TJR Low:</strong> Red "⊥" symbol below candles for significant lows</li>
-                  <li><strong>Both High & Low:</strong> Purple "T" symbol when both occur</li>
+                  <li><strong>Swing High:</strong> Blue triangle above candles (spy1h only)</li>
+                  <li><strong>Swing Low:</strong> Orange triangle below candles (spy1h only)</li>
                   <li><strong>Toggle Display:</strong> Show/hide each marker type independently</li>
+                  <li><strong>Table Support:</strong> Works with any SPY table that has labeled data</li>
                 </ul>
-                <p className="mt-2 text-xs">Toggle these on to see "T" symbol markers on your chart instead of color changes.</p>
+                <p className="mt-2 text-xs">Toggle these on to see symbol markers on your chart.</p>
               </div>
             } isDarkMode={isDarkMode} />
           </div>
-          
           <div className="flex items-center gap-4">
             {/* TJR Highs Toggle */}
             <div className="flex items-center gap-2">
@@ -734,10 +872,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 TJR Highs:
               </label>
               <button
-                onClick={() => {
-                  console.log('TJR Highs toggle clicked. Previous:', showTjrHighs, 'Next:', !showTjrHighs);
-                  setShowTjrHighs(!showTjrHighs);
-                }}
+                onClick={() => setShowTjrHighs(!showTjrHighs)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   showTjrHighs
                     ? 'bg-green-600 focus:ring-green-500'
@@ -758,7 +893,6 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 {showTjrHighs ? 'ON' : 'OFF'}
               </span>
             </div>
-
             {/* TJR Lows Toggle */}
             <div className="flex items-center gap-2">
               <label className={`text-sm font-medium ${
@@ -767,10 +901,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 TJR Lows:
               </label>
               <button
-                onClick={() => {
-                  console.log('TJR Lows toggle clicked. Previous:', showTjrLows, 'Next:', !showTjrLows);
-                  setShowTjrLows(!showTjrLows);
-                }}
+                onClick={() => setShowTjrLows(!showTjrLows)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   showTjrLows
                     ? 'bg-red-600 focus:ring-red-500'
@@ -791,14 +922,87 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 {showTjrLows ? 'ON' : 'OFF'}
               </span>
             </div>
+            {/* Swing Highs Toggle (spy1h only) */}
+            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && (
+              <div className="flex items-center gap-2">
+                <label className={`text-sm font-medium ${
+                  isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                }`}>
+                  Swing Highs:
+                </label>
+                <button
+                  onClick={() => setShowSwingHighs(!showSwingHighs)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    showSwingHighs
+                      ? 'bg-blue-600 focus:ring-blue-500'
+                      : isDarkMode
+                        ? 'bg-gray-600 focus:ring-gray-500'
+                        : 'bg-gray-200 focus:ring-gray-500'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showSwingHighs ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs ${
+                  showSwingHighs ? 'text-blue-600' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  {showSwingHighs ? 'ON' : 'OFF'}
+                </span>
+              </div>
+            )}
+            {/* Swing Lows Toggle (spy1h only) */}
+            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && (
+              <div className="flex items-center gap-2">
+                <label className={`text-sm font-medium ${
+                  isDarkMode ? 'text-orange-300' : 'text-orange-700'
+                }`}>
+                  Swing Lows:
+                </label>
+                <button
+                  onClick={() => setShowSwingLows(!showSwingLows)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    showSwingLows
+                      ? 'bg-orange-500 focus:ring-orange-400'
+                      : isDarkMode
+                        ? 'bg-gray-600 focus:ring-gray-500'
+                        : 'bg-gray-200 focus:ring-gray-500'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showSwingLows ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs ${
+                  showSwingLows ? 'text-orange-500' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  {showSwingLows ? 'ON' : 'OFF'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
-        
-        {(showTjrHighs || showTjrLows) && (
+        {(showTjrHighs || showTjrLows || showSwingHighs || showSwingLows) && (
           <div className={`mt-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Displaying: {showTjrHighs ? 'TJR High "T" markers' : ''} {showTjrHighs && showTjrLows ? ' & ' : ''} {showTjrLows ? 'TJR Low "⊥" markers' : ''} on chart
+            Displaying: {showTjrHighs ? 'TJR High "T" markers' : ''} {showTjrHighs && showTjrLows ? ' & ' : ''} {showTjrLows ? 'TJR Low "⊥" markers' : ''} {(showTjrHighs || showTjrLows) && (showSwingHighs || showSwingLows) ? ' & ' : ''} {showSwingHighs ? 'Swing High "▲" markers' : ''} {showSwingHighs && showSwingLows ? ' & ' : ''} {showSwingLows ? 'Swing Low "▼" markers' : ''} on chart
           </div>
         )}
+        {/* Show which tables support TJR labels */}
+        <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          💡 TJR labels available for: SPY tables with labeled data
+          {availableLabeledTables.length > 0 ? (
+            <span className="ml-1">({availableLabeledTables.join(', ')})</span>
+          ) : (
+            <span className="ml-1">(checking availability...)</span>
+          )}
+          {selectedSymbol !== 'spy' && (
+            <span className="ml-2 text-orange-500">⚠️ Current symbol ({selectedSymbol}) may not have labeled data</span>
+          )}
+        </div>
       </div>
       
       {/* Status Display */}
@@ -815,14 +1019,26 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
             
             {error && (
               <div className={`text-sm ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
-                ❌ Error: {error}
+                ❌ Network Error: {error}
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Unable to connect to labels service. Check your connection.
+                </div>
               </div>
             )}
             
-            {labelsData && !loading && !error && (
+            {!loading && !error && (
               <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                📊 Labels loaded: {labelsData.length} total 
-                ({labelsData.filter(l => l.label === 'tjr_high').length} highs, {labelsData.filter(l => l.label === 'tjr_low').length} lows)
+                {labelsData && labelsData.length > 0 ? (
+                  <>
+                    📊 Labels loaded from {selectedSymbol}{selectedTimeframe}_labeled: {labelsData.length} total 
+                    ({labelsData.filter(l => l.label === 'tjr_high').length} highs, {labelsData.filter(l => l.label === 'tjr_low').length} lows)
+                  </>
+                ) : (
+                  <>
+                    📊 No labeled data available for {selectedSymbol}{selectedTimeframe}. 
+                    The {selectedSymbol}{selectedTimeframe}_labeled table may not exist or may be empty.
+                  </>
+                )}
               </div>
             )}
             
@@ -833,36 +1049,67 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
               </div>
             )}
             
-            {(showTjrHighs || showTjrLows) && matchingLabels.length > 0 && (
+            {((showTjrHighs || showTjrLows) && matchingLabels.length > 0) || ((showSwingHighs || showSwingLows) && matchingSwingLabels.length > 0) && (
               <div className={`mt-3 p-2 rounded border ${
                 isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'
               }`}>
                 <div className={`text-xs font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  📊 TJR Marker Legend:
+                  📊 Marker Legend:
                 </div>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  {showTjrHighs && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">T</div>
-                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR High (above candle)</span>
-                    </div>
-                  )}
-                  {showTjrLows && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">⊥</div>
-                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR Low (below candle)</span>
-                    </div>
-                  )}
-                  {showTjrHighs && showTjrLows && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">T</div>
-                      <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Both High & Low</span>
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className={`font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>TJR Markers:</div>
+                    {showTjrHighs && (
+                      <div className="flex items-center gap-1 mb-1">
+                        <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">T</div>
+                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR High (highest in range)</span>
+                      </div>
+                    )}
+                    {showTjrLows && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">⊥</div>
+                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>TJR Low (lowest in range)</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className={`font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Swing Markers (SPY 1H):</div>
+                    {showSwingHighs && (
+                      <div className="flex items-center gap-1 mb-1">
+                        <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center text-white text-xs font-bold">▲</div>
+                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Swing High (exact candle)</span>
+                      </div>
+                    )}
+                    {showSwingLows && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-4 h-4 bg-orange-500 rounded flex items-center justify-center text-white text-xs font-bold">▼</div>
+                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Swing Low (exact candle)</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                  💡 TJR markers now appear as "T" symbols above/below candles instead of color changes
+                  💡 TJR markers show the highest/lowest point within a time range, while swing markers show exact pivot points
                 </div>
+              </div>
+            )}
+            {matchingSwingLabels.length > 0 && (
+              <div className={`text-xs ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                🟦 Found {matchingSwingLabels.length} matching swing candles in current chart
+                ({matchingSwingLabels.filter(m => m.label.label === 'swing_high').length} swing highs, {matchingSwingLabels.filter(m => m.label.label === 'swing_low').length} swing lows)
+              </div>
+            )}
+            
+            {(showSwingHighs || showSwingLows) && matchingSwingLabels.length === 0 && swingLabelsData && swingLabelsData.length > 0 && (
+              <div className={`text-xs ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                ⚠️ No swing markers matched any candles in the current chart. Check timestamp format or zoom out.
+              </div>
+            )}
+            
+            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && swingLabelsData && (
+              <div className={`text-xs ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                📊 Swing labels loaded: {swingLabelsData.length} total 
+                ({swingLabelsData.filter(l => l.label === 'swing_high').length} highs, {swingLabelsData.filter(l => l.label === 'swing_low').length} lows)
               </div>
             )}
           </div>
@@ -1001,14 +1248,21 @@ const TradingChartDashboard = ({
         selectedCandles: currentSymbolTimeframeSelection.map(c => c.timestamp)
       });
 
-      // Get TJR labels state and matching labels
+      // Get TJR and swing labels state
       const tjrLabelsElement = document.querySelector('[data-tjr-labels]');
-      let tjrState = { showTjrHighs: false, showTjrLows: false, matchingLabels: [] };
+      let tjrState = { 
+        showTjrHighs: false, 
+        showTjrLows: false, 
+        matchingLabels: [],
+        showSwingHighs: false,
+        showSwingLows: false,
+        matchingSwingLabels: []
+      };
       
       if (tjrLabelsElement) {
         try {
           tjrState = JSON.parse(tjrLabelsElement.getAttribute('data-tjr-labels'));
-          console.log('🎛️ TJR State:', tjrState);
+          console.log('🎛️ TJR & Swing State:', tjrState);
         } catch (e) {
           console.warn('Could not parse TJR labels state');
         }
@@ -1105,8 +1359,10 @@ const TradingChartDashboard = ({
       }
       priceSeriesRef.current = newSeries;
 
-      // --- Build the combined marker array (tjrMarkers) based on toggles and matchingLabels ---
-      const tjrMarkers = [];
+      // --- Build the combined marker array (both TJR and swing markers) ---
+      const allMarkers = [];
+      
+      // Build TJR markers
       if (tjrState.showTjrHighs || tjrState.showTjrLows) {
         // Group matching labels by their original label (not by timestamp)
         const labelGroups = {};
@@ -1136,7 +1392,7 @@ const TradingChartDashboard = ({
               }
             });
             const candleTime = Math.floor(new Date(highestCandle.timestamp).getTime() / 1000);
-            tjrMarkers.push({
+            allMarkers.push({
               time: candleTime,
               position: 'aboveBar',
               color: '#22c55e',
@@ -1156,7 +1412,7 @@ const TradingChartDashboard = ({
               }
             });
             const candleTime = Math.floor(new Date(lowestCandle.timestamp).getTime() / 1000);
-            tjrMarkers.push({
+            allMarkers.push({
               time: candleTime,
               position: 'belowBar',
               color: '#ef4444',
@@ -1167,14 +1423,44 @@ const TradingChartDashboard = ({
           }
         });
       }
+      
+      // Build swing markers (exact timestamp matches)
+      if (tjrState.showSwingHighs || tjrState.showSwingLows) {
+        if (tjrState.matchingSwingLabels && Array.isArray(tjrState.matchingSwingLabels)) {
+          tjrState.matchingSwingLabels.forEach(match => {
+            if (match.label.label === 'swing_high' && tjrState.showSwingHighs) {
+              allMarkers.push({
+                time: Math.floor(new Date(match.candle.timestamp).getTime() / 1000),
+                position: 'aboveBar',
+                color: '#2563eb', // blue
+                shape: 'circle',
+                text: '▲',
+                size: 1
+              });
+            }
+            if (match.label.label === 'swing_low' && tjrState.showSwingLows) {
+              allMarkers.push({
+                time: Math.floor(new Date(match.candle.timestamp).getTime() / 1000),
+                position: 'belowBar',
+                color: '#f59e0b', // orange
+                shape: 'circle',
+                text: '▼',
+                size: 1
+              });
+            }
+          });
+        }
+      }
 
       // 3️⃣ Apply markers (single combined set)
-      if (tjrMarkers.length > 0) {
-        createSeriesMarkers(priceSeriesRef.current, tjrMarkers);
-        console.log(`✅ Applied ${tjrMarkers.length} TJR markers (combined set)`);
+      if (allMarkers.length > 0) {
+        createSeriesMarkers(priceSeriesRef.current, allMarkers);
+        const tjrCount = allMarkers.filter(m => m.text === 'T' || m.text === '⊥').length;
+        const swingCount = allMarkers.filter(m => m.text === '▲' || m.text === '▼').length;
+        console.log(`✅ Applied ${allMarkers.length} total markers (${tjrCount} TJR + ${swingCount} swing)`);
       } else {
         createSeriesMarkers(priceSeriesRef.current, []);
-        console.log('📝 No TJR markers to display – cleared all markers');
+        console.log('📝 No markers to display – cleared all markers');
       }
 
       // 4️⃣ Fit the content so the new series is rendered properly
