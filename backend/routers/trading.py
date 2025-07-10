@@ -298,4 +298,13 @@ async def get_spy1h_swings_labels(db: Session = Depends(get_db)):
         return trading_service.get_spy1h_swings_labels(db)
     except Exception as e:
         logger.error(f"Error fetching swing labels for spy1h_swings: {e}")
+        return []
+
+@router.get("/swing-labels/{symbol}/{timeframe}", summary="Get all swing labels from swings table")
+async def get_swing_labels(db: Session = Depends(get_db), symbol: str = None, timeframe: str = None):
+    """Fetch all rows from labels.{symbol}{timeframe}_swings table"""
+    try:
+        return trading_service.get_swing_labels(db, symbol, timeframe)
+    except Exception as e:
+        logger.error(f"Error fetching swing labels for {symbol}{timeframe}: {e}")
         return [] 

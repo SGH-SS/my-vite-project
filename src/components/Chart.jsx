@@ -587,25 +587,41 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
   const [matchingLabels, setMatchingLabels] = useState([]);
   const [hasLabelsTable, setHasLabelsTable] = useState(false);
   const [availableLabeledTables, setAvailableLabeledTables] = useState([]);
+  const [availableSwingTables, setAvailableSwingTables] = useState([]);
 
   const {
     selectedSymbol,
     selectedTimeframe
   } = useTrading();
 
-  // Check which labeled tables are available
+  // Check which labeled and swing tables are available
   useEffect(() => {
     const checkAvailableTables = async () => {
       const spyTimeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
-      const available = [];
+      const availableLabeled = [];
+      const availableSwing = [];
       
       for (const tf of spyTimeframes) {
+        // Check labeled tables
         try {
           const response = await fetch(`http://localhost:8000/api/trading/labels/spy/${tf}`);
           if (response.ok) {
             const data = await response.json();
             if (Array.isArray(data) && data.length > 0) {
-              available.push(`spy${tf}_labeled`);
+              availableLabeled.push(`spy${tf}_labeled`);
+            }
+          }
+        } catch (err) {
+          // Silently ignore errors for table checking
+        }
+        
+        // Check swing tables
+        try {
+          const response = await fetch(`http://localhost:8000/api/trading/swing-labels/spy/${tf}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+              availableSwing.push(`spy${tf}_swings`);
             }
           }
         } catch (err) {
@@ -613,7 +629,8 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
         }
       }
       
-      setAvailableLabeledTables(available);
+      setAvailableLabeledTables(availableLabeled);
+      setAvailableSwingTables(availableSwing);
     };
     
     checkAvailableTables();
@@ -733,20 +750,36 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
     setMatchingLabels(matches);
   }, [labelsData, chartDataRef?.current]);
 
-  // Fetch swing labels for spy1h
+  // Fetch swing labels for all SPY timeframes
   useEffect(() => {
-    if (selectedSymbol === 'spy' && selectedTimeframe === '1h') {
+    if (selectedSymbol === 'spy') {
       const fetchSwingLabels = async () => {
         try {
-          const endpoint = 'http://localhost:8000/api/trading/labels/spy1h_swings';
+          // Try the generic endpoint first
+          const endpoint = `http://localhost:8000/api/trading/swing-labels/${selectedSymbol}/${selectedTimeframe}`;
           const response = await fetch(endpoint);
           if (response.ok) {
             const data = await response.json();
             setSwingLabelsData(Array.isArray(data) ? data : []);
+            console.log(`📊 Swing labels loaded for ${selectedSymbol}${selectedTimeframe}:`, data.length);
           } else {
-            setSwingLabelsData([]);
+            // Fallback to spy1h endpoint if it's spy1h and generic fails
+            if (selectedTimeframe === '1h') {
+              const fallbackEndpoint = 'http://localhost:8000/api/trading/labels/spy1h_swings';
+              const fallbackResponse = await fetch(fallbackEndpoint);
+              if (fallbackResponse.ok) {
+                const fallbackData = await fallbackResponse.json();
+                setSwingLabelsData(Array.isArray(fallbackData) ? fallbackData : []);
+                console.log(`📊 Swing labels loaded (fallback) for spy1h:`, fallbackData.length);
+              } else {
+                setSwingLabelsData([]);
+              }
+            } else {
+              setSwingLabelsData([]);
+            }
           }
         } catch (err) {
+          console.warn(`No swing labels available for ${selectedSymbol}${selectedTimeframe}`);
           setSwingLabelsData([]);
         }
       };
@@ -854,8 +887,8 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 <ul className="list-disc list-inside space-y-1 text-xs">
                   <li><strong>TJR High:</strong> Green "T" symbol above candles for significant highs</li>
                   <li><strong>TJR Low:</strong> Red "⊥" symbol below candles for significant lows</li>
-                  <li><strong>Swing High:</strong> Blue triangle above candles (spy1h only)</li>
-                  <li><strong>Swing Low:</strong> Orange triangle below candles (spy1h only)</li>
+                  <li><strong>Swing High:</strong> Blue "▲" symbol above candles (all SPY timeframes)</li>
+                  <li><strong>Swing Low:</strong> Orange "▼" symbol below candles (all SPY timeframes)</li>
                   <li><strong>Toggle Display:</strong> Show/hide each marker type independently</li>
                   <li><strong>Table Support:</strong> Works with any SPY table that has labeled data</li>
                 </ul>
@@ -922,8 +955,8 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 {showTjrLows ? 'ON' : 'OFF'}
               </span>
             </div>
-            {/* Swing Highs Toggle (spy1h only) */}
-            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && (
+            {/* Swing Highs Toggle (all SPY timeframes) */}
+            {selectedSymbol === 'spy' && swingLabelsData && (
               <div className="flex items-center gap-2">
                 <label className={`text-sm font-medium ${
                   isDarkMode ? 'text-blue-300' : 'text-blue-700'
@@ -953,8 +986,8 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                 </span>
               </div>
             )}
-            {/* Swing Lows Toggle (spy1h only) */}
-            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && (
+            {/* Swing Lows Toggle (all SPY timeframes) */}
+            {selectedSymbol === 'spy' && swingLabelsData && (
               <div className="flex items-center gap-2">
                 <label className={`text-sm font-medium ${
                   isDarkMode ? 'text-orange-300' : 'text-orange-700'
@@ -991,16 +1024,28 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
             Displaying: {showTjrHighs ? 'TJR High "T" markers' : ''} {showTjrHighs && showTjrLows ? ' & ' : ''} {showTjrLows ? 'TJR Low "⊥" markers' : ''} {(showTjrHighs || showTjrLows) && (showSwingHighs || showSwingLows) ? ' & ' : ''} {showSwingHighs ? 'Swing High "▲" markers' : ''} {showSwingHighs && showSwingLows ? ' & ' : ''} {showSwingLows ? 'Swing Low "▼" markers' : ''} on chart
           </div>
         )}
-        {/* Show which tables support TJR labels */}
+        {/* Show which tables support TJR and swing labels */}
         <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-          💡 TJR labels available for: SPY tables with labeled data
-          {availableLabeledTables.length > 0 ? (
-            <span className="ml-1">({availableLabeledTables.join(', ')})</span>
-          ) : (
-            <span className="ml-1">(checking availability...)</span>
-          )}
+          <div className="mb-1">
+            💡 TJR labels available for: SPY tables with labeled data
+            {availableLabeledTables.length > 0 ? (
+              <span className="ml-1">({availableLabeledTables.join(', ')})</span>
+            ) : (
+              <span className="ml-1">(checking availability...)</span>
+            )}
+          </div>
+          <div>
+            🔵 Swing labels available for: SPY tables with swing data
+            {availableSwingTables.length > 0 ? (
+              <span className="ml-1">({availableSwingTables.join(', ')})</span>
+            ) : (
+              <span className="ml-1">(checking availability...)</span>
+            )}
+          </div>
           {selectedSymbol !== 'spy' && (
-            <span className="ml-2 text-orange-500">⚠️ Current symbol ({selectedSymbol}) may not have labeled data</span>
+            <div className="mt-1">
+              <span className="text-orange-500">⚠️ Current symbol ({selectedSymbol}) may not have labeled or swing data</span>
+            </div>
           )}
         </div>
       </div>
@@ -1073,7 +1118,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                     )}
                   </div>
                   <div>
-                    <div className={`font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Swing Markers (SPY 1H):</div>
+                    <div className={`font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Swing Markers (SPY All Timeframes):</div>
                     {showSwingHighs && (
                       <div className="flex items-center gap-1 mb-1">
                         <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center text-white text-xs font-bold">▲</div>
@@ -1106,9 +1151,9 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
               </div>
             )}
             
-            {selectedSymbol === 'spy' && selectedTimeframe === '1h' && swingLabelsData && (
+            {selectedSymbol === 'spy' && swingLabelsData && swingLabelsData.length > 0 && (
               <div className={`text-xs ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                📊 Swing labels loaded: {swingLabelsData.length} total 
+                📊 Swing labels loaded for {selectedSymbol}{selectedTimeframe}: {swingLabelsData.length} total 
                 ({swingLabelsData.filter(l => l.label === 'swing_high').length} highs, {swingLabelsData.filter(l => l.label === 'swing_low').length} lows)
               </div>
             )}
