@@ -49,20 +49,58 @@
 
 ## 🎯 **Advanced Features**
 
-### **🏷️ Trading Labels System** ⭐ **NEW**
-- **Label Types**: tjr_high and tjr_low indicators
-- **Database Integration**: Separate labels tables for each symbol/timeframe
-- **API Endpoint**: `/api/trading/labels/{symbol}{timeframe}`
-- **Chart Integration**: Visual indicators on price charts
-- **Label Structure**:
-  ```json
-  {
-    "id": 1,
-    "label": "tjr_high",
-    "value": 4500.25,
-    "pointer": [1, 2, 3]  // Reference to candle indices
-  }
-  ```
+### **🏷️ Universal TJR & Swing Marker Support** ⭐ **NEW (2024 Update)**
+
+#### **Key Features**
+- **TJR Markers** (High/Low) and **Swing Markers** (High/Low) now supported for **all SPY timeframes** (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+- **Dynamic Table Detection**: System automatically detects which SPY tables have labeled or swing data
+- **Flexible Table Naming**: Supports both `spy1h_swings` and `spy_1h_swings` (and similar) naming conventions
+- **Clean Toggle UI**: TJR and swing toggles appear for all SPY timeframes with available data
+- **Combined Marker Rendering**: Both marker types are rendered together, with no visual glitches
+- **Status & Legend**: UI shows which tables have data, and a legend explains marker types
+
+#### **Marker Types**
+- **TJR High**: Green circle with "T" (highest in range)
+- **TJR Low**: Red circle with "⊥" (lowest in range)
+- **Swing High**: Blue circle with "▲" (exact candle)
+- **Swing Low**: Orange circle with "▼" (exact candle)
+
+#### **How Swings and TJR Markers Are Defined**
+- **Swing High/Low**: A swing high is the highest high, and a swing low is the lowest low, within a fixed grouping window (e.g., a week for 4h candles, or 2 weeks for 1d candles). The marker is placed on the exact candle that set the high or low. These are objective, algorithmic pivots and are not affected by the color of the candle.
+- **TJR High/Low (Trend/Jump Reversal)**: A TJR high is defined as a local high where a green (bullish) candle is immediately followed by a red (bearish) candle, indicating a potential reversal from up to down. A TJR low is a local low where a red (bearish) candle is immediately followed by a green (bullish) candle, indicating a potential reversal from down to up. TJR markers are placed at the transition point and highlight possible internal liquidity shifts.
+
+#### **Liquidity Identification Using Swings & TJR Markers**
+
+##### **Concept**
+- **External Liquidity**: Areas where price is likely to run stops or sweep liquidity above swing highs or below swing lows. These are typically targeted by large players to trigger stop orders and induce volatility.
+- **Internal Liquidity**: Areas inside the current range, often defined by TJR highs/lows, where price may react, consolidate, or reverse due to internal order flow shifts.
+
+##### **How to Use in Practice**
+
+1. **Identify External Liquidity (Swings):**
+   - Use swing highs and lows across multiple timeframes (e.g., 4h, 1d, 10d) to mark the most obvious liquidity pools.
+   - When price approaches a swing high/low, anticipate possible liquidity grabs (stop runs) and watch for sharp reversals or acceleration through these levels.
+   - Example strategy: Fade the first move beyond a major swing high/low if there is a strong reversal signal (e.g., TJR or volume spike), or join the breakout if price closes decisively beyond the swing with confirmation.
+
+2. **Identify Internal Liquidity (TJR):**
+   - Use TJR highs/lows to map out the most recent internal pivots within the current range.
+   - These are often used by algorithms and smart money to accumulate or distribute positions before a larger move.
+   - Example strategy: Enter on a retest of a TJR high/low after a sweep, or use them as targets for partial profit-taking when trading within a range.
+
+3. **Multi-Timeframe Confluence:**
+   - Look for alignment between swing levels and TJR levels across different timeframes (e.g., a 4h swing high that coincides with a 1d TJR high).
+   - The more levels cluster together, the higher the probability of a significant liquidity event.
+
+4. **Execution Plan:**
+   - **Preparation:** Mark all swing and TJR levels on your chart for the relevant timeframes.
+   - **Trigger:** Wait for price to approach these levels, then look for confirmation (e.g., reversal candle, order flow shift, or momentum divergence).
+   - **Entry:** Enter on confirmation, with stops placed just beyond the liquidity level (for fades) or on breakout retests (for continuations).
+   - **Management:** Scale out at the next internal or external liquidity level, or trail stops as price moves in your favor.
+
+##### **Why This Works**
+- **Swings** represent the most obvious liquidity pools—where retail stops and institutional resting orders accumulate. Price is drawn to these areas, and reactions are often sharp and tradeable.
+- **TJR** levels capture the subtle, internal shifts in order flow that precede larger moves. They are less obvious, providing an edge for anticipating reversals or continuations before the crowd.
+- **Combining both** allows you to anticipate where liquidity is likely to be found and how price is likely to react, giving you a robust, repeatable edge.
 
 ### **📅 Enhanced Date Range Controls**
 - **Fetch Modes**:
@@ -234,7 +272,8 @@ GET /api/trading/date-ranges/{symbol}/{timeframe} # Available date ranges
 
 ### **Trading Labels** ⭐ **NEW**
 ```
-GET /api/trading/labels/{symbol}{timeframe}       # Trading indicators (tjr_high/low)
+GET /api/trading/labels/{symbol}/{timeframe}      # TJR labels for any symbol/timeframe
+GET /api/trading/swing-labels/{symbol}/{timeframe} # Swing high/low labels for any symbol/timeframe
 ```
 
 ### **Shape Similarity (ISO Vectors Only)**
@@ -382,12 +421,25 @@ CREATE TABLE labels_{symbol}{timeframe} (
     value DECIMAL,               -- Price value
     pointer INTEGER[]            -- Reference to candle indices
 );
+
+-- Swing tables (NEW)
+CREATE TABLE swings_{symbol}{timeframe} (
+    id SERIAL PRIMARY KEY,
+    label VARCHAR,               -- 'swing_high' or 'swing_low'
+    value DECIMAL,               -- Price value
+    pointer INTEGER[]            -- Reference to candle indices
+);
 ```
 
 ### **Available Data**
 - **Symbols**: ES (E-mini S&P 500), EURUSD (Forex), SPY (ETF)
 - **Timeframes**: 1m, 5m, 15m, 30m, 1h, 4h, 1d
 - **Total Tables**: 21 tables (3 symbols × 7 timeframes)
+
+### **Example Table Names Supported**
+- `spy1h_labeled`, `spy_1h_labeled`
+- `spy1h_swings`, `spy_1h_swings`
+- ...and all other SPY timeframes
 
 ## 🔧 **Configuration**
 
@@ -453,6 +505,7 @@ BATCH_SIZE=128
 - **Vector Generation**: Requires sufficient RAM for BERT model (4GB+)
 - **Large Matrices**: Shape similarity >50x50 may impact browser performance
 - **TradingView Charts**: Requires separate license for production use
+- **TJR/Swing Toggles**: If toggles do not appear, check that your database has the appropriate labeled or swing tables for the selected timeframe
 
 ### **Performance Tips**
 - **Data Fetching**: Use date ranges instead of large record limits
@@ -460,15 +513,39 @@ BATCH_SIZE=128
 - **Memory Usage**: Monitor browser memory with large datasets
 - **GPU Acceleration**: Use CUDA for faster vector generation
 
+### **Status Panel**
+- The status panel will show which tables are available for TJR and swing markers
+- Check the status panel to verify which SPY timeframes have labeled or swing data
+
+## 🎯 **How to Use**
+
+### **Basic Setup**
+1. Start the backend server (`uvicorn main:app` or your preferred method)
+2. Start the frontend (`npm run dev`)
+3. Select any SPY symbol and timeframe
+4. Toggle TJR and swing markers as desired
+5. See real-time status of available tables and markers
+
+### **Advanced Usage**
+- **Multi-Dashboard Analysis**: Use all four dashboards simultaneously for comprehensive analysis
+- **Vector Analysis**: Explore pattern recognition with ISO vectors and shape similarity
+- **Candle Selection**: Use advanced selection modes for detailed analysis
+- **Date Range Filtering**: Optimize data loading with intelligent date controls
+
 ---
 
 **Daygent** represents a comprehensive agentic trading intelligence platform, combining quantitative analysis, machine learning, and professional trading tools in a unified interface. The monolithic architecture ensures seamless integration while the modular components provide future scalability options.
 
-**🎯 Current Status**: Fully functional with 4 integrated dashboards, trading labels system, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
+**🎯 Current Status**: Fully functional with 4 integrated dashboards, universal TJR and swing marker support, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
 
 **Latest Updates**:
-- 🏷️ Trading labels integration with tjr_high/low indicators
+- 🏷️ Universal TJR and Swing marker support for all SPY timeframes
 - 🎯 Advanced chart selection modes with keyboard shortcuts
 - 📅 Enhanced date range controls with multiple fetch modes
 - 🔍 Debug panel for data quality verification
 - 📊 Selected Candles Panel for global selection management
+- 🔄 Dynamic table detection for flexible naming conventions
+
+**Credits**:
+- Universal marker support and robust table detection added July 2024
+- Comprehensive agentic trading intelligence platform developed 2024

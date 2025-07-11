@@ -13,7 +13,7 @@ Vector Dashboard :
 
 Chart Dashboard :
 {
-
+      
 } 
 
 LLM Dashboard :
