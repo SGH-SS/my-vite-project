@@ -588,6 +588,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
   const [hasLabelsTable, setHasLabelsTable] = useState(false);
   const [availableLabeledTables, setAvailableLabeledTables] = useState([]);
   const [availableSwingTables, setAvailableSwingTables] = useState([]);
+  const [isLabelsLoaded, setIsLabelsLoaded] = useState(false);
 
   const {
     selectedSymbol,
@@ -666,6 +667,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
                   tjr_high: fallbackData.filter(l => l.label === 'tjr_high').length,
                   tjr_low: fallbackData.filter(l => l.label === 'tjr_low').length
                 });
+                setIsLabelsLoaded(true);
                 return;
               }
             }
@@ -674,6 +676,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
           console.warn(`Labels endpoint returned ${response.status} for ${selectedSymbol}${selectedTimeframe}`);
           setLabelsData([]);
           setHasLabelsTable(false);
+          setIsLabelsLoaded(true);
           return;
         }
         
@@ -688,9 +691,11 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
             tjr_high: data.filter(l => l.label === 'tjr_high').length,
             tjr_low: data.filter(l => l.label === 'tjr_low').length
           });
+          setIsLabelsLoaded(true);
         } else {
           setLabelsData([]);
           setHasLabelsTable(false);
+          setIsLabelsLoaded(true);
         }
         
               } catch (err) {
@@ -703,6 +708,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
           }
           setLabelsData([]);
           setHasLabelsTable(false);
+          setIsLabelsLoaded(true);
         } finally {
           setLoading(false);
         }
@@ -1518,7 +1524,7 @@ const TradingChartDashboard = ({
       // Update selection statistics after full rebuild
       updateSelectionStats();
 
-      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${tjrMarkers.length}`);
+      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${allMarkers.length}`);
 
     } catch (error) {
       console.error('❌ Error updating chart highlights:', error);
@@ -2333,16 +2339,6 @@ const TradingChartDashboard = ({
         dashboardType="chart"
       />
 
-      {/* Selected Candles Panel */}
-      <SelectedCandlesPanel 
-        isDarkMode={isDarkMode} 
-        canSelectCandles={true}
-      />
-
-
-
-
-
       {/* Chart Container */}
       <div className={`rounded-lg shadow-md transition-colors duration-200 ${
         isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -2645,6 +2641,12 @@ const TradingChartDashboard = ({
         chartRef={chartRef}
         priceSeriesRef={priceSeriesRef}
         chartDataRef={chartDataRef}
+      />
+
+      {/* Selected Candles Panel */}
+      <SelectedCandlesPanel 
+        isDarkMode={isDarkMode} 
+        canSelectCandles={true}
       />
 
       {/* OHLC Data Summary Table */}
