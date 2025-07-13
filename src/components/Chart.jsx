@@ -1225,6 +1225,11 @@ const TradingChartDashboard = ({
   const [rangeStartIndex, setRangeStartIndex] = useState(null);
   const [selectionStats, setSelectionStats] = useState(null);
   
+  // Crosshair state for selection mode
+  const [crosshairPosition, setCrosshairPosition] = useState(null);
+  const [showCustomCrosshair, setShowCustomCrosshair] = useState(false);
+  const [enableSelectionCrosshair, setEnableSelectionCrosshair] = useState(true);
+  
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const selectionOverlayRef = useRef(null);
@@ -1961,6 +1966,12 @@ const TradingChartDashboard = ({
     setRangeStartIndex(null);
     setHoveredCandle(null);
     
+    // Reset crosshair state when exiting selection mode
+    if (isSelectionMode) {
+      setShowCustomCrosshair(false);
+      setCrosshairPosition(null);
+    }
+    
     // Reset to default selection mode
     if (!isSelectionMode) {
       setSelectionModeType('click');
@@ -2141,13 +2152,22 @@ const TradingChartDashboard = ({
     const containerRect = chartContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
     
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
+    
+    // Update crosshair position for selection mode
+    if (enableSelectionCrosshair) {
+      setCrosshairPosition({ x: mouseX, y: mouseY });
+      setShowCustomCrosshair(true);
+    }
+    
     // Update hover info
     const candleData = getCandleFromPosition(e.clientX, containerRect);
     if (candleData) {
       setHoveredCandle({
         index: candleData.index,
         candle: candleData.candle,
-        position: { x: e.clientX - containerRect.left, y: e.clientY - containerRect.top }
+        position: { x: mouseX, y: mouseY }
       });
     } else {
       setHoveredCandle(null);
@@ -2426,6 +2446,26 @@ const TradingChartDashboard = ({
               </div>
             )}
 
+            {/* Crosshair Toggle - Only visible in selection mode */}
+            {isSelectionMode && (
+              <button
+                onClick={() => setEnableSelectionCrosshair(!enableSelectionCrosshair)}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                  enableSelectionCrosshair
+                    ? isDarkMode
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : isDarkMode
+                      ? 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+                title="Toggle crosshair in selection mode"
+              >
+                <span>✛</span>
+                <span>{enableSelectionCrosshair ? 'Crosshair ON' : 'Crosshair OFF'}</span>
+              </button>
+            )}
+
             {/* Selection Mode Toggle */}
             <button
               onClick={toggleSelectionMode}
@@ -2555,6 +2595,8 @@ const TradingChartDashboard = ({
                 onMouseUp={handleOverlayMouseUp}
                 onMouseLeave={() => {
                   setHoveredCandle(null);
+                  setShowCustomCrosshair(false);
+                  setCrosshairPosition(null);
                   if (isDragging) {
                     setIsDragging(false);
                     setDragStart(null);
@@ -2568,6 +2610,38 @@ const TradingChartDashboard = ({
                     className="absolute"
                     style={getSelectionBoxStyle()}
                   />
+                )}
+                
+                {/* Custom Crosshair for Selection Mode */}
+                {showCustomCrosshair && crosshairPosition && (
+                  <>
+                    {/* Vertical line */}
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: `${crosshairPosition.x}px`,
+                        top: '0px',
+                        width: '1px',
+                        height: '100%',
+                        borderLeft: `1px dashed ${isDarkMode ? '#60a5fa' : '#3b82f6'}`,
+                        opacity: 0.8,
+                        zIndex: 5
+                      }}
+                    />
+                    {/* Horizontal line */}
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: '0px',
+                        top: `${crosshairPosition.y}px`,
+                        width: '100%',
+                        height: '1px',
+                        borderTop: `1px dashed ${isDarkMode ? '#60a5fa' : '#3b82f6'}`,
+                        opacity: 0.8,
+                        zIndex: 5
+                      }}
+                    />
+                  </>
                 )}
                 
                 {/* Hover Tooltip */}
