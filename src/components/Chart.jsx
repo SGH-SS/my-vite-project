@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 // Import lightweight-charts v5.0 - install with: npm install lightweight-charts
-import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, AreaSeries, ColorType, createSeriesMarkers, CrosshairMode } from 'lightweight-charts';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
 import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
@@ -1230,14 +1230,113 @@ const TradingChartDashboard = ({
   const [showCustomCrosshair, setShowCustomCrosshair] = useState(false);
   const [enableSelectionCrosshair, setEnableSelectionCrosshair] = useState(true);
   
+  // Multi-timeframe analysis states
+  const [showSecondaryChart, setShowSecondaryChart] = useState(false);
+  const [secondaryTimeframe, setSecondaryTimeframe] = useState('15m');
+  const [secondaryChartData, setSecondaryChartData] = useState(null);
+  const [secondaryLoading, setSecondaryLoading] = useState(false);
+  const [secondaryError, setSecondaryError] = useState(null);
+  const [correlatedCandles, setCorrelatedCandles] = useState([]);
+  const [hasSequentialSelection, setHasSequentialSelection] = useState(false);
+  const [showBreakdownOverlay, setShowBreakdownOverlay] = useState(true);
+  
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const selectionOverlayRef = useRef(null);
   const priceSeriesRef = useRef(null);
   const chartDataRef = useRef(null); // Store original chart data
   const timeScaleRef = useRef(null); // Store timescale reference
+  
+  // Secondary chart refs
+  const secondaryChartContainerRef = useRef(null);
+  const secondaryChartRef = useRef(null);
+  const secondaryPriceSeriesRef = useRef(null);
+  const secondaryChartDataRef = useRef(null);
 
   const API_BASE_URL = 'http://localhost:8000/api/trading';
+
+  // Helper function to get timeframe duration in minutes
+  const getTimeframeMinutes = (timeframe) => {
+    const timeframeMap = {
+      '1m': 1,
+      '5m': 5,
+      '15m': 15,
+      '30m': 30,
+      '1h': 60,
+      '4h': 240,
+      '1d': 1440
+    };
+    return timeframeMap[timeframe] || 60;
+  };
+
+  // Helper function to determine if timeframes are compatible for correlation
+  const areTimeframesCompatible = (primary, secondary) => {
+    const primaryMinutes = getTimeframeMinutes(primary);
+    const secondaryMinutes = getTimeframeMinutes(secondary);
+    
+    // Secondary should be smaller timeframe than primary
+    if (secondaryMinutes >= primaryMinutes) return false;
+    
+    // Primary should be evenly divisible by secondary
+    return primaryMinutes % secondaryMinutes === 0;
+  };
+
+  // Function to check if selected candles are sequential (allows single candle)
+  const areSelectedCandlesSequential = () => {
+    const currentSelection = selectedCandles.filter(c => 
+      c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+    );
+    
+    if (currentSelection.length === 0) return false;
+    
+    // Single candle is always considered "sequential"
+    if (currentSelection.length === 1) return true;
+    
+    // Sort by source index
+    const sortedSelection = [...currentSelection].sort((a, b) => a.sourceIndex - b.sourceIndex);
+    
+    // Check if indices are consecutive
+    for (let i = 1; i < sortedSelection.length; i++) {
+      if (sortedSelection[i].sourceIndex !== sortedSelection[i-1].sourceIndex + 1) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // Function to find correlated candles for ALL selected sequential candles
+  const findCorrelatedCandlesForSelection = (selectedCandlesList, secondaryData) => {
+    if (!selectedCandlesList || selectedCandlesList.length === 0 || !secondaryData || secondaryData.length === 0) {
+      return [];
+    }
+    
+    const primaryMinutes = getTimeframeMinutes(selectedTimeframe);
+    const allCorrelated = [];
+    
+    selectedCandlesList.forEach(primaryCandle => {
+      const primaryTime = new Date(primaryCandle.timestamp);
+      
+      // Calculate the time range for this primary candle
+      const primaryStart = new Date(primaryTime);
+      const primaryEnd = new Date(primaryTime.getTime() + (primaryMinutes * 60 * 1000));
+      
+      // Find all secondary candles that fall within this time range
+      const correlated = secondaryData.filter(secondaryCandle => {
+        const secondaryTime = new Date(secondaryCandle.timestamp);
+        return secondaryTime >= primaryStart && secondaryTime < primaryEnd;
+      });
+      
+      allCorrelated.push(...correlated);
+    });
+    
+    // Remove duplicates and sort by timestamp
+    const uniqueCorrelated = allCorrelated.filter((candle, index, self) => 
+      index === self.findIndex(c => c.timestamp === candle.timestamp)
+    );
+    
+    return uniqueCorrelated.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  };
 
   const updateSelectionStats = useCallback(() => {
     const currentSelection = selectedCandles.filter(c => 
@@ -1544,6 +1643,28 @@ const TradingChartDashboard = ({
     }
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, timeRange, fetchMode, dateRangeType, startDate, endDate]);
 
+  // Monitor sequential selection status
+  useEffect(() => {
+    const isSequential = areSelectedCandlesSequential();
+    setHasSequentialSelection(isSequential);
+    
+    // If no longer sequential, hide secondary chart
+    if (!isSequential && showSecondaryChart) {
+      setShowSecondaryChart(false);
+      setCorrelatedCandles([]);
+    }
+    
+    console.log('🔄 Sequential selection status:', isSequential);
+  }, [selectedCandles, selectedSymbol, selectedTimeframe]);
+
+  // Fetch secondary chart data when secondary chart is enabled or timeframe changes
+  useEffect(() => {
+    if (showSecondaryChart && selectedSymbol && secondaryTimeframe && hasSequentialSelection) {
+      console.log('🔄 Secondary chart data fetch triggered:', selectedSymbol, secondaryTimeframe);
+      fetchSecondaryChartData();
+    }
+  }, [showSecondaryChart, selectedSymbol, secondaryTimeframe, hasSequentialSelection, fetchMode, dateRangeType, startDate, endDate, rowLimit, sortOrder]);
+
   // Initialize chart when data changes - FIXED: Ensures chart updates when symbol/timeframe changes
   useEffect(() => {
     if (chartData?.data && chartData.data.length > 0 && !loading) {
@@ -1562,6 +1683,22 @@ const TradingChartDashboard = ({
     }
   }, [chartData, loading]);
 
+  // Initialize secondary chart when data changes
+  useEffect(() => {
+    if (secondaryChartData?.data && secondaryChartData.data.length > 0 && !secondaryLoading && showSecondaryChart) {
+      console.log('📊 Secondary chart initialization triggered by data change');
+      setTimeout(() => {
+        initializeSecondaryChart(secondaryChartData.data);
+      }, 100);
+    } else if (!showSecondaryChart && secondaryChartRef.current) {
+      // Clean up secondary chart when disabled
+      console.log('🧹 Cleaning up secondary chart');
+      secondaryChartRef.current.remove();
+      secondaryChartRef.current = null;
+      secondaryPriceSeriesRef.current = null;
+    }
+  }, [secondaryChartData, secondaryLoading, showSecondaryChart, correlatedCandles]);
+
   // Reinitialize chart when theme changes or chart type changes
   useEffect(() => {
     if (chartData?.data && chartData.data.length > 0 && !loading) {
@@ -1570,6 +1707,14 @@ const TradingChartDashboard = ({
       setTimeout(() => {
         initializeChart(chartData.data);
       }, 100);
+    }
+    
+    // Also reinitialize secondary chart for theme changes
+    if (secondaryChartData?.data && secondaryChartData.data.length > 0 && !secondaryLoading && showSecondaryChart) {
+      console.log('🎨 Secondary chart reinitialize triggered by theme change');
+      setTimeout(() => {
+        initializeSecondaryChart(secondaryChartData.data);
+      }, 150);
     }
   }, [isDarkMode, chartType]);
 
@@ -1580,6 +1725,11 @@ const TradingChartDashboard = ({
         chartRef.current.remove();
         chartRef.current = null;
         priceSeriesRef.current = null;
+      }
+      if (secondaryChartRef.current) {
+        secondaryChartRef.current.remove();
+        secondaryChartRef.current = null;
+        secondaryPriceSeriesRef.current = null;
       }
     };
   }, []);
@@ -1626,6 +1776,81 @@ const TradingChartDashboard = ({
   }, [updateChartHighlights]); // Remove updateChartHighlights from dependency array since it's a stable function
 
 
+
+  const fetchSecondaryChartData = async () => {
+    if (!showSecondaryChart || !selectedSymbol || !secondaryTimeframe || !hasSequentialSelection) return;
+    
+    setSecondaryLoading(true);
+    setSecondaryError(null);
+    
+    try {
+      // Get the selected sequential candles
+      const selectedSequentialCandles = selectedCandles.filter(c => 
+        c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+      ).sort((a, b) => a.sourceIndex - b.sourceIndex);
+      
+      if (selectedSequentialCandles.length === 0) {
+        setSecondaryError('No sequential candles selected');
+        return;
+      }
+      
+      // Calculate the time range we need to fetch
+      const firstCandle = selectedSequentialCandles[0];
+      const lastCandle = selectedSequentialCandles[selectedSequentialCandles.length - 1];
+      
+      const primaryMinutes = getTimeframeMinutes(selectedTimeframe);
+      const startTime = new Date(firstCandle.timestamp);
+      const endTime = new Date(new Date(lastCandle.timestamp).getTime() + (primaryMinutes * 60 * 1000));
+      
+      console.log('📊 Fetching secondary data for time range:', startTime.toISOString(), 'to', endTime.toISOString());
+      
+      let url = `${API_BASE_URL}/data/${selectedSymbol}/${secondaryTimeframe}`;
+      let queryParams = new URLSearchParams();
+
+      // Use the calculated time range
+      queryParams.append('start_date', startTime.toISOString());
+      queryParams.append('end_date', endTime.toISOString());
+      queryParams.append('limit', '10000'); // Large limit to get all data in range
+      queryParams.append('order', 'asc'); // Always ascending for proper correlation
+      queryParams.append('sort_by', 'timestamp');
+
+      const response = await fetch(`${url}?${queryParams.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📊 Secondary chart data fetched:', data.data?.length, 'candles for', selectedSequentialCandles.length, 'selected candles');
+      
+      // Filter to only include candles that fall within our selected primary candles' time ranges
+      if (data.data && Array.isArray(data.data)) {
+        const correlatedCandles = findCorrelatedCandlesForSelection(selectedSequentialCandles, data.data);
+        
+        // Create a new data structure with only the correlated candles
+        const filteredData = {
+          ...data,
+          data: correlatedCandles
+        };
+        
+        setSecondaryChartData(filteredData);
+        setCorrelatedCandles(correlatedCandles);
+        
+        // Store secondary chart data for highlighting
+        secondaryChartDataRef.current = correlatedCandles;
+        
+        console.log('📊 Filtered to', correlatedCandles.length, 'correlated candles');
+      }
+      
+      setSecondaryError(null);
+      
+    } catch (err) {
+      setSecondaryError(`Failed to fetch secondary chart data: ${err.message}`);
+      console.error('❌ Secondary chart data fetch error:', err);
+    } finally {
+      setSecondaryLoading(false);
+    }
+  };
 
   const fetchChartData = async () => {
     setLoading(true);
@@ -1731,6 +1956,139 @@ const TradingChartDashboard = ({
       setLoading(false);
     }
   };
+
+  const initializeSecondaryChart = (data) => {
+    if (!secondaryChartContainerRef.current || !data || data.length === 0) {
+      console.warn('⚠️ Cannot initialize secondary chart - missing container or data');
+      return;
+    }
+
+    console.log('🎯 Initializing secondary chart with', data.length, 'candles');
+
+    // Store secondary chart data for correlation
+    if (!secondaryChartDataRef.current) {
+      secondaryChartDataRef.current = data;
+    }
+
+    // Clear any existing secondary chart
+    if (secondaryChartRef.current) {
+      console.log('🧹 Cleaning up existing secondary chart');
+      secondaryChartRef.current.remove();
+      secondaryChartRef.current = null;
+      secondaryPriceSeriesRef.current = null;
+    }
+
+    // Clear the container
+    if (secondaryChartContainerRef.current) {
+      secondaryChartContainerRef.current.innerHTML = '';
+    }
+
+    try {
+      // Ensure container has dimensions
+      const containerWidth = secondaryChartContainerRef.current.clientWidth || 800;
+      const containerHeight = 200; // Smaller height for secondary chart
+      
+      console.log('📐 Secondary container dimensions:', { width: containerWidth, height: containerHeight });
+      
+      // Create the secondary chart
+      const chart = createChart(secondaryChartContainerRef.current, {
+        width: containerWidth,
+        height: containerHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: isDarkMode ? '#1f2937' : '#ffffff' },
+          textColor: isDarkMode ? '#e5e7eb' : '#374151',
+        },
+        grid: {
+          vertLines: { color: isDarkMode ? '#374151' : '#e5e7eb' },
+          horzLines: { color: isDarkMode ? '#374151' : '#e5e7eb' },
+        },
+        timeScale: {
+          borderColor: isDarkMode ? '#6b7280' : '#d1d5db',
+          timeVisible: true,
+          secondsVisible: false,
+        },
+        rightPriceScale: {
+          borderColor: isDarkMode ? '#6b7280' : '#d1d5db',
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+        },
+      });
+
+      secondaryChartRef.current = chart;
+
+      // Prepare candlestick data with conditional orange overlay
+      const candlestickData = data.map(candle => {
+        const baseData = {
+          time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        };
+
+        // Apply orange overlay if toggle is enabled
+        if (showBreakdownOverlay) {
+          const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
+          return {
+            ...baseData,
+            color: '#f59e0b', // Orange body for breakdown candles
+            wickColor: '#f59e0b', // Orange wicks too
+            borderColor: '#d97706' // Darker orange border
+          };
+        } else {
+          // Use default colors when overlay is disabled
+          const isBullish = parseFloat(candle.close) >= parseFloat(candle.open);
+          return {
+            ...baseData,
+            color: isBullish ? '#26a69a' : '#ef5350',
+            wickColor: isBullish ? '#26a69a' : '#ef5350',
+            borderColor: isBullish ? '#26a69a' : '#ef5350'
+          };
+        }
+      });
+
+      // Add the secondary price series
+      const priceSeries = chart.addSeries(CandlestickSeries, {
+        upColor: showBreakdownOverlay ? '#f59e0b' : '#26a69a',
+        downColor: showBreakdownOverlay ? '#f59e0b' : '#ef5350',
+        borderVisible: true,
+        wickUpColor: showBreakdownOverlay ? '#f59e0b' : '#26a69a',
+        wickDownColor: showBreakdownOverlay ? '#f59e0b' : '#ef5350',
+        borderUpColor: showBreakdownOverlay ? '#d97706' : '#26a69a',
+        borderDownColor: showBreakdownOverlay ? '#d97706' : '#ef5350',
+      });
+      
+      priceSeries.setData(candlestickData);
+      secondaryPriceSeriesRef.current = priceSeries;
+
+      // Fit content to show all data
+      chart.timeScale().fitContent();
+
+      console.log('✅ Secondary chart initialized successfully');
+
+      // Handle resize
+      const handleResize = () => {
+        const newWidth = secondaryChartContainerRef.current?.clientWidth || 800;
+        chart.applyOptions({ width: newWidth });
+      };
+
+      window.addEventListener('resize', handleResize);
+      
+      // Store resize handler for cleanup
+      chart._resizeHandler = handleResize;
+
+    } catch (error) {
+      console.error('❌ Error initializing secondary chart:', error);
+    }
+  };
+
+  // Re-initialize secondary chart when overlay toggle changes
+  useEffect(() => {
+    if (showSecondaryChart && secondaryChartDataRef.current) {
+      initializeSecondaryChart(secondaryChartDataRef.current);
+    }
+  }, [showBreakdownOverlay, isDarkMode]);
 
   const initializeChart = (data) => {
     if (!chartContainerRef.current || !data || data.length === 0) {
@@ -2446,6 +2804,64 @@ const TradingChartDashboard = ({
               </div>
             )}
 
+            {/* Multi-Timeframe Toggle - Only show when sequential candles are selected */}
+            {hasSequentialSelection && (
+              <>
+                <button
+                  onClick={() => setShowSecondaryChart(!showSecondaryChart)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                    showSecondaryChart
+                      ? isDarkMode
+                        ? 'bg-green-600 text-white'
+                        : 'bg-green-600 text-white'
+                      : isDarkMode
+                        ? 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                                     title="Show breakdown of selected candle(s) in lower timeframe"
+                >
+                  <span>📊</span>
+                  <span>{showSecondaryChart ? 'Breakdown ON' : 'Show Breakdown'}</span>
+                </button>
+
+                {/* Secondary Timeframe Selector - Only visible when secondary chart is enabled */}
+                {showSecondaryChart && (
+                  <div className="flex items-center gap-2">
+                    <label className={`text-sm font-medium ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      Breakdown:
+                    </label>
+                    <select
+                      value={secondaryTimeframe}
+                      onChange={(e) => setSecondaryTimeframe(e.target.value)}
+                      className={`px-3 py-1 text-sm rounded-md border transition-colors duration-200 ${
+                        isDarkMode 
+                          ? 'border-gray-600 bg-gray-700 text-white' 
+                          : 'border-gray-300 bg-white text-gray-900'
+                      }`}
+                    >
+                      <option value="1m">1 Minute</option>
+                      <option value="5m">5 Minutes</option>
+                      <option value="15m">15 Minutes</option>
+                      <option value="30m">30 Minutes</option>
+                      <option value="1h">1 Hour</option>
+                      <option value="4h">4 Hours</option>
+                    </select>
+                    
+                    {/* Compatibility Warning */}
+                    {!areTimeframesCompatible(selectedTimeframe, secondaryTimeframe) && (
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        isDarkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        ⚠️ Incompatible
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             {/* Crosshair Toggle - Only visible in selection mode */}
             {isSelectionMode && (
               <button
@@ -2467,30 +2883,77 @@ const TradingChartDashboard = ({
             )}
 
             {/* Selection Mode Toggle */}
-            <button
-              onClick={toggleSelectionMode}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                isSelectionMode
-                  ? isDarkMode
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-                    : 'bg-blue-600 text-white ring-2 ring-blue-300'
-                  : isDarkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
-              }`}
-            >
-              {isSelectionMode ? (
-                <>
-                  <span>🎯</span>
-                  <span>Selection Mode ON</span>
-                </>
-              ) : (
-                <>
-                  <span>🕯️</span>
-                  <span>Select Candles</span>
-                </>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={toggleSelectionMode}
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 ${
+                  isSelectionMode
+                    ? 'bg-blue-500 text-white shadow-lg transform scale-105'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+                title="Toggle selection mode"
+              >
+                {/* Modern Crosshair Icon */}
+                <svg 
+                  width="18" 
+                  height="18" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2.5" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="mr-2"
+                >
+                  {/* Crosshair lines */}
+                  <line x1="12" y1="2" x2="12" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  {/* Center circle */}
+                  <circle cx="12" cy="12" r="3" fill="none"></circle>
+                  {/* Corner indicators */}
+                  <path d="M7 7L5 5M17 7L19 5M7 17L5 19M17 17L19 19" strokeWidth="2"></path>
+                </svg>
+                Select Range
+              </button>
+
+              {/* Breakdown overlay toggle - only show when in breakdown mode */}
+              {showSecondaryChart && (
+                <button
+                  onClick={() => setShowBreakdownOverlay(!showBreakdownOverlay)}
+                  className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 ${
+                    showBreakdownOverlay
+                      ? 'bg-orange-500 text-white shadow-lg'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                  title="Toggle breakdown overlay highlighting"
+                >
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    className="mr-2"
+                  >
+                    {showBreakdownOverlay ? (
+                      <>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </>
+                    ) : (
+                      <>
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </>
+                    )}
+                  </svg>
+                  {showBreakdownOverlay ? 'Hide' : 'Show'} Overlay
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </div>
 
@@ -2708,6 +3171,213 @@ const TradingChartDashboard = ({
           )}
         </div>
       </div>
+
+            {/* Secondary Chart Container - Only show when sequential candles are selected */}
+      {showSecondaryChart && hasSequentialSelection && (
+        <div className={`rounded-lg shadow-md transition-colors duration-200 ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}>
+          <div className={`px-6 py-4 border-b flex items-center justify-between transition-colors duration-200 ${
+            isDarkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}>
+            <div className="flex items-center">
+              <h3 className={`text-lg font-semibold ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
+                Breakdown Chart ({secondaryTimeframe})
+              </h3>
+              <InfoTooltip id="secondary-chart" content={
+                <div>
+                                       <p className="font-semibold mb-2">📊 Candle Breakdown Analysis</p>
+                     <p className="mb-2">Shows the lower timeframe candles that make up your selected candle(s):</p>
+                     <ul className="list-disc list-inside space-y-1 text-xs">
+                       <li><strong>Single or Sequential:</strong> Select 1+ consecutive candles on the main chart</li>
+                       <li><strong>Breakdown Display:</strong> See all the smaller timeframe candles that compose them</li>
+                       <li><strong>Timeframe Rules:</strong> Breakdown timeframe must be smaller than primary</li>
+                       <li><strong>Compatible Ratios:</strong> Primary timeframe must be evenly divisible by breakdown timeframe</li>
+                     </ul>
+                     <p className="mt-2 text-xs">Perfect for detailed analysis of how larger candles are formed from smaller ones.</p>
+                </div>
+              } isDarkMode={isDarkMode} />
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Selection Status */}
+              {(() => {
+                const selectedSequentialCandles = selectedCandles.filter(c => 
+                  c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+                );
+                return selectedSequentialCandles.length > 0 && (
+                  <div className={`text-sm px-3 py-1 rounded-full ${
+                    isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    📊 {selectedSequentialCandles.length} selected candles → {correlatedCandles.length} breakdown candles
+                  </div>
+                );
+              })()}
+              
+              {/* Compatibility Status */}
+              {areTimeframesCompatible(selectedTimeframe, secondaryTimeframe) ? (
+                <div className={`text-sm px-3 py-1 rounded-full ${
+                  isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'
+                }`}>
+                  ✅ Compatible
+                </div>
+              ) : (
+                <div className={`text-sm px-3 py-1 rounded-full ${
+                  isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'
+                }`}>
+                  ❌ Incompatible
+                </div>
+              )}
+            </div>
+          </div>
+          
+                     <div className="p-6">
+             {/* Sequential Selection Analysis Panel */}
+             {correlatedCandles.length > 0 && areTimeframesCompatible(selectedTimeframe, secondaryTimeframe) && (() => {
+               const selectedSequentialCandles = selectedCandles.filter(c => 
+                 c.symbol === selectedSymbol && c.timeframe === selectedTimeframe
+               ).sort((a, b) => a.sourceIndex - b.sourceIndex);
+               
+               return selectedSequentialCandles.length > 0 && (
+                 <div className={`mb-4 p-4 rounded-lg border transition-colors duration-200 ${
+                   isDarkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'
+                 }`}>
+                   <div className="flex items-center justify-between mb-3">
+                                            <h4 className={`font-semibold ${
+                         isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                       }`}>
+                         🔗 Candle Breakdown Analysis
+                       </h4>
+                     <button
+                       onClick={() => {
+                         setShowSecondaryChart(false);
+                         setCorrelatedCandles([]);
+                       }}
+                       className={`text-xs px-2 py-1 rounded ${
+                         isDarkMode 
+                           ? 'bg-blue-800 text-blue-200 hover:bg-blue-700' 
+                           : 'bg-blue-200 text-blue-800 hover:bg-blue-300'
+                       }`}
+                     >
+                       Close
+                     </button>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4 text-sm">
+                     <div>
+                                                <div className={`font-medium mb-2 ${
+                           isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                         }`}>
+                           Selected Candle(s) ({selectedTimeframe})
+                         </div>
+                       <div className={`space-y-1 ${
+                         isDarkMode ? 'text-blue-200' : 'text-blue-600'
+                       }`}>
+                         <div>🔢 Count: {selectedSequentialCandles.length} candles</div>
+                         <div>⏰ From: {formatTimestamp(selectedSequentialCandles[0].timestamp)}</div>
+                         <div>⏰ To: {formatTimestamp(selectedSequentialCandles[selectedSequentialCandles.length - 1].timestamp)}</div>
+                         <div>
+                           📊 Combined Range: {Math.min(...selectedSequentialCandles.map(c => c.low)).toFixed(2)} - {Math.max(...selectedSequentialCandles.map(c => c.high)).toFixed(2)}
+                         </div>
+                       </div>
+                     </div>
+                     
+                     <div>
+                       <div className={`font-medium mb-2 ${
+                         isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                       }`}>
+                         Breakdown Candles ({secondaryTimeframe})
+                       </div>
+                       <div className={`space-y-1 ${
+                         isDarkMode ? 'text-blue-200' : 'text-blue-600'
+                       }`}>
+                         <div>🔢 Count: {correlatedCandles.length} candles</div>
+                         <div>⏰ From: {correlatedCandles.length > 0 ? new Date(correlatedCandles[0].timestamp).toLocaleTimeString() : 'N/A'}</div>
+                         <div>⏰ To: {correlatedCandles.length > 0 ? new Date(correlatedCandles[correlatedCandles.length - 1].timestamp).toLocaleTimeString() : 'N/A'}</div>
+                         <div>
+                           📊 Range: {correlatedCandles.length > 0 ? 
+                             `${Math.min(...correlatedCandles.map(c => c.low)).toFixed(2)} - ${Math.max(...correlatedCandles.map(c => c.high)).toFixed(2)}` 
+                             : 'N/A'}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                   
+                   <div className={`mt-3 pt-3 border-t text-xs ${
+                     isDarkMode ? 'border-blue-800 text-blue-400' : 'border-blue-300 text-blue-600'
+                   }`}>
+                     💡 Your {selectedSequentialCandles.length} {selectedTimeframe} candle{selectedSequentialCandles.length === 1 ? '' : 's'} {selectedSequentialCandles.length === 1 ? 'is' : 'are'} composed of {correlatedCandles.length} × {secondaryTimeframe} candles shown below
+                   </div>
+                 </div>
+               );
+             })()}
+             
+             {/* Secondary Chart Loading */}
+            {secondaryLoading && (
+              <div className="flex items-center justify-center h-48">
+                <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${
+                  isDarkMode ? 'border-green-400' : 'border-green-600'
+                }`}></div>
+                <span className={`ml-3 ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                }`}>Loading secondary chart...</span>
+              </div>
+            )}
+            
+            {/* Secondary Chart Error */}
+            {secondaryError && (
+              <div className={`rounded-lg p-4 border transition-colors duration-200 ${
+                isDarkMode 
+                  ? 'bg-red-900/20 border-red-800' 
+                  : 'bg-red-50 border-red-200'
+              }`}>
+                <div className="flex items-center">
+                  <div className="text-red-500 text-sm font-medium">Error loading secondary chart</div>
+                </div>
+                <div className="text-red-500 text-sm mt-1">{secondaryError}</div>
+                <button 
+                  onClick={fetchSecondaryChartData}
+                  className="mt-2 px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors duration-200"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            
+            {/* Secondary Chart Container */}
+            {!secondaryLoading && !secondaryError && (
+              <div 
+                ref={secondaryChartContainerRef}
+                className={`w-full h-48 rounded border transition-colors duration-200 ${
+                  isDarkMode 
+                    ? 'border-gray-600 bg-gray-900' 
+                    : 'border-gray-200 bg-gray-50'
+                }`}
+                style={{ minHeight: '200px' }}
+              >
+                {/* Secondary chart is rendered programmatically */}
+              </div>
+            )}
+            
+            {/* No Data Message */}
+            {!secondaryChartData?.data && !secondaryLoading && !secondaryError && (
+              <div className="flex items-center justify-center h-48">
+                <div className="text-center">
+                  <div className="text-4xl mb-4">📊</div>
+                  <h3 className={`text-lg font-medium mb-2 ${
+                    isDarkMode ? 'text-gray-300' : 'text-gray-900'
+                  }`}>No Secondary Chart Data</h3>
+                  <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Secondary chart will load automatically when enabled
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* TJR Labels Toggle Controls */}
       <TjrLabelsControl 
