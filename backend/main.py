@@ -14,7 +14,7 @@ from routers import trading
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG to see all our debug logs
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
 logger = logging.getLogger(__name__)

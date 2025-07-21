@@ -48,6 +48,12 @@ async def health_check():
     """Simple health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now()}
 
+@router.get("/test-fvg", summary="Test FVG endpoint connectivity")
+async def test_fvg():
+    """Test endpoint to verify FVG routes are working"""
+    logger.info("🧪 TEST FVG ENDPOINT CALLED")
+    return {"status": "FVG endpoint is accessible", "timestamp": datetime.now()}
+
 @router.get("/stats", response_model=DatabaseStats, summary="Get database statistics")
 async def get_database_stats(db: Session = Depends(get_db)):
     """Get overall statistics about the trading database"""
@@ -307,4 +313,26 @@ async def get_swing_labels(db: Session = Depends(get_db), symbol: str = None, ti
         return trading_service.get_swing_labels(db, symbol, timeframe)
     except Exception as e:
         logger.error(f"Error fetching swing labels for {symbol}{timeframe}: {e}")
-        return [] 
+        return []
+
+@router.get("/fvg-labels/{symbol}/{timeframe}", summary="Get all FVG labels from FVG table")
+async def get_fvg_labels(db: Session = Depends(get_db), symbol: str = None, timeframe: str = None):
+    """Fetch all rows from labels.{symbol}{timeframe}_fvg table"""
+    logger.info(f"🟢 FVG API ENDPOINT CALLED: /fvg-labels/{symbol}/{timeframe}")
+    try:
+        result = trading_service.get_fvg_labels(db, symbol, timeframe)
+        
+        # Check if we got None (table doesn't exist) vs empty array (table exists but no data)
+        if result is None:
+            logger.warning(f"❌ FVG table not found for {symbol}{timeframe}")
+            raise HTTPException(status_code=404, detail=f"FVG table not found for {symbol}{timeframe}")
+        
+        logger.info(f"🟢 FVG API RETURNING: {len(result)} records for {symbol}{timeframe}")
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in FVG API endpoint for {symbol}{timeframe}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching FVG labels: {str(e)}") 

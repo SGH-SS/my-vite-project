@@ -593,4 +593,69 @@ class TradingDataService:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Error accessing swing table {chosen_table}: {e}")
+            return []
+
+    def get_fvg_labels(self, db: Session, symbol: str, timeframe: str) -> list:
+        """Fetch all rows from labels.{symbol}{timeframe}_fvg table"""
+        from config import settings
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🔍 FVG REQUEST: symbol='{symbol}', timeframe='{timeframe}'")
+        
+        # Try both naming conventions for FVG tables
+        table_names = [
+            f"{symbol}{timeframe}_fvg",
+            f"{symbol}_{timeframe}_fvg"
+        ]
+        
+        logger.info(f"🔍 Checking FVG table names: {table_names}")
+        logger.info(f"🔍 Using labels schema: '{settings.LABELS_SCHEMA}'")
+        
+        chosen_table = None
+        for table_name in table_names:
+            check_table_query = text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = '{settings.LABELS_SCHEMA}' 
+                    AND table_name = '{table_name}'
+                );
+            """)
+            try:
+                logger.info(f"🔍 Checking if table exists: {settings.LABELS_SCHEMA}.{table_name}")
+                table_exists = db.execute(check_table_query).scalar()
+                logger.info(f"🔍 Table {table_name} exists: {table_exists}")
+                if table_exists:
+                    chosen_table = table_name
+                    logger.info(f"✅ Found FVG table: {chosen_table}")
+                    break
+            except Exception as e:
+                logger.warning(f"❌ Error checking table {table_name}: {e}")
+                continue
+        if not chosen_table:
+            logger.warning(f"❌ No FVG table found for {symbol}{timeframe}")
+            return None  # Return None to indicate table doesn't exist
+        
+        try:
+            query = text(f"""
+                SELECT id, label, value, color_order, pointer
+                FROM {settings.LABELS_SCHEMA}.{chosen_table}
+                ORDER BY id
+            """)
+            logger.info(f"🔍 Executing FVG query: {query}")
+            result = db.execute(query)
+            rows = result.fetchall()
+            logger.info(f"✅ Found {len(rows)} FVG rows in {chosen_table}")
+            return [
+                {
+                    "id": row[0],
+                    "label": row[1],
+                    "value": row[2],
+                    "color_order": row[3],
+                    "pointer": row[4],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"❌ Error accessing FVG table {chosen_table}: {e}")
             return [] 

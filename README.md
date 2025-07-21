@@ -147,6 +147,75 @@ Dynamic Vector Types (auto-detected from data):
 - **Full Range Visualization**: -100% (opposite) to +100% (identical)
 - **Client-Side Fallback**: Automatic calculation if backend unavailable
 
+## 🔬 **Advanced Shape Similarity Analysis** ⭐ **NEW**
+
+### **Multi-Metric Similarity Engine**
+- **Hybrid Similarity Calculation**: Combines 4 different distance metrics for superior pattern discrimination
+- **Weighted Algorithm**: Emphasizes Manhattan distance (40%) for shape-sensitive analysis
+- **Full Spectrum Mapping**: -100% (opposite patterns) to +100% (identical patterns)
+- **Performance Optimization**: Server-side processing for large similarity matrices
+
+### **Similarity Metrics Breakdown**
+```
+1. Manhattan Distance (40% weight)    - Most sensitive to shape differences
+2. Euclidean Distance (25% weight)    - Standard geometric distance
+3. Correlation Analysis (20% weight)   - Pattern relationship detection
+4. Cosine Similarity (15% weight)     - Directional similarity
+```
+
+### **Advanced Features**
+- **Zero Vector Handling**: Graceful handling of edge cases and invalid data
+- **Normalization Pipeline**: Proper vector normalization before similarity calculation
+- **Statistical Robustness**: Handles NaN values and numerical instabilities
+- **Matrix Optimization**: Efficient computation for large similarity matrices (up to 100x100)
+
+### **Use Cases**
+- **Pattern Recognition**: Identify similar candlestick formations across different time periods
+- **Anomaly Detection**: Find unusual market patterns using ISO vector analysis
+- **Strategy Development**: Quantify pattern similarity for algorithmic trading
+- **Market Analysis**: Compare current patterns to historical performance
+
+## 🎯 **Binary Classification Labels** ⭐ **NEW**
+
+### **Future Price Direction Column**
+- **Universal Implementation**: Added to all 21 backtest tables across all symbols and timeframes
+- **Binary Classification**: `future` column indicates next candle's price direction
+- **Label Logic**: 
+  - `1` = Next candle's close > Current candle's close (bullish)
+  - `0` = Next candle's close ≤ Current candle's close (bearish/neutral)
+- **ML-Ready Format**: Perfect for supervised learning and pattern prediction
+
+### **Applications**
+- **Machine Learning Training**: Train models to predict price direction from current patterns
+- **Backtesting Strategies**: Validate trading signals against historical outcomes
+- **Pattern Analysis**: Identify which patterns historically lead to price increases
+- **Risk Assessment**: Calculate probability of bullish/bearish outcomes
+
+### **Data Structure**
+```sql
+-- Example: es_1m, eurusd_5m, spy_1d, etc.
+CREATE TABLE {symbol}_{timeframe} (
+    symbol VARCHAR,
+    timestamp TIMESTAMP,
+    open DECIMAL,
+    high DECIMAL, 
+    low DECIMAL,
+    close DECIMAL,
+    volume DECIMAL,
+    future INTEGER,  -- NEW: 1 = next close higher, 0 = next close lower/equal
+    
+    -- Vector columns (dynamically detected)
+    raw_ohlc_vec DECIMAL[],
+    raw_ohlcv_vec DECIMAL[],
+    norm_ohlc DECIMAL[],
+    norm_ohlcv DECIMAL[],
+    BERT_ohlc DECIMAL[],
+    BERT_ohlcv DECIMAL[],
+    iso_ohlc DECIMAL[],
+    iso_ohlcv DECIMAL[]
+);
+```
+
 ## 🏗️ **Technology Stack**
 
 ### **Frontend**
@@ -181,6 +250,39 @@ Vector Generation (compute.py)
 ├── Z-Score Normalization
 └── Batch Processing (GPU accelerated)
 ```
+
+## 🤖 **Enhanced ML Vector Generation Pipeline** ⭐ **NEW**
+
+### **Advanced Vector Processing (compute.py)**
+- **Multi-Modal Vector Generation**: Six distinct vector types for comprehensive analysis
+- **GPU Acceleration**: CUDA support for faster BERT processing with automatic fallback
+- **Batch Processing**: Configurable batch sizes for optimal memory usage
+- **Sentence Crafting**: Intelligent text representation of OHLC data for semantic analysis
+
+### **Vector Types Generated**
+```
+1. raw_ohlc_vec    - Direct OHLC values [4 dimensions]
+2. raw_ohlcv_vec   - OHLC + Volume [5 dimensions]
+3. norm_ohlc       - Z-score normalized OHLC [4 dimensions]
+4. norm_ohlcv      - Z-score normalized OHLCV [5 dimensions]
+5. BERT_ohlc       - Semantic embeddings [384 dimensions]
+6. BERT_ohlcv      - BERT with volume [384 dimensions]
+```
+
+### **Processing Features**
+- **Automatic Device Detection**: Chooses CUDA/CPU based on availability
+- **Progress Tracking**: Real-time progress bars for embedding generation
+- **Logging System**: Comprehensive logging to both file and console
+- **Error Handling**: Graceful handling of missing columns and data issues
+- **Volume Normalization**: Log1p transformation for volume data before z-scoring
+
+### **Pipeline Workflow**
+1. **Data Validation**: Checks for required columns (symbol, timestamp, OHLC, volume)
+2. **Sentence Generation**: Creates text representations for semantic analysis
+3. **BERT Embedding**: Generates 384-dimensional semantic vectors
+4. **Raw Vector Creation**: Direct numerical representations
+5. **Statistical Normalization**: Z-score normalization with proper handling
+6. **Output Generation**: CSV files with all vector columns appended
 
 ## 📁 **Project Structure**
 
@@ -270,6 +372,20 @@ GET /api/trading/tables                           # Available data tables
 GET /api/trading/date-ranges/{symbol}/{timeframe} # Available date ranges
 ```
 
+### **🏷️ Enhanced Trading Labels & Markers** ⭐ **NEW**
+```
+GET /api/trading/labels/{symbol}/{timeframe}      # TJR labels for any symbol/timeframe
+GET /api/trading/swing-labels/{symbol}/{timeframe} # Swing high/low labels for any symbol/timeframe
+GET /api/trading/labels/spy1h                     # Legacy SPY 1H labels endpoint
+GET /api/trading/labels/spy1h_swings              # Legacy SPY 1H swings endpoint
+```
+
+#### **Label Types & Data Structure**
+- **TJR Labels**: Trend/Jump Reversal markers with time range pointers
+- **Swing Labels**: Exact pivot points with precise timestamp matching
+- **Flexible Table Support**: Handles both `spy1h_labeled` and `spy_1h_labeled` naming conventions
+- **Graceful Degradation**: Returns empty arrays for missing tables instead of errors
+
 ### **Trading Labels** ⭐ **NEW**
 ```
 GET /api/trading/labels/{symbol}/{timeframe}      # TJR labels for any symbol/timeframe
@@ -333,6 +449,47 @@ python compute.py
 - **Responsive Design**: Works on desktop, tablet, and mobile
 - **Advanced Tooltips**: Comprehensive help system throughout
 
+### **🎯 Advanced Candle Selection System** ⭐ **NEW**
+
+#### **Interactive Selection Modes**
+- **Click Mode** (Default): Single-click to select/deselect individual candles
+- **Range Mode** (Shift+Click): Select consecutive candles between two points
+- **Multi-Select Mode** (Ctrl/Cmd+Click): Add individual candles to existing selection
+- **Drag Selection**: Click and drag to select multiple candles in one motion
+- **Time-Based Selection**: Quick buttons for 1H, 4H, 1D time ranges
+
+#### **Visual Selection Features**
+- **Blue Highlighting**: Selected candles highlighted with blue overlay
+- **Real-time Hover Tooltips**: OHLC data preview on mouse hover
+- **Selection Box**: Visual rectangle during drag operations
+- **Custom Crosshair**: Optional crosshair overlay in selection mode
+- **Selection Statistics**: Real-time count, price range, and trend analysis
+
+#### **Keyboard Shortcuts**
+- **Escape**: Exit selection mode
+- **Delete**: Clear all selected candles for current symbol/timeframe
+- **Shift**: Switch to range selection mode
+- **Ctrl/Cmd**: Switch to multi-select mode
+
+### **📊 Multi-Timeframe Breakdown Analysis** ⭐ **NEW**
+
+#### **Sequential Candle Analysis**
+- **Automatic Detection**: System detects when selected candles are consecutive
+- **Breakdown Toggle**: Enable secondary chart for detailed analysis
+- **Timeframe Compatibility**: Validates that breakdown timeframe is smaller than primary
+- **Correlated Candles**: Shows all smaller timeframe candles that compose selected candles
+
+#### **Secondary Chart Features**
+- **Dual Chart Display**: Primary chart + breakdown chart side-by-side
+- **Orange Overlay Mode**: Optional highlighting of breakdown candles
+- **Real-time Correlation**: Automatic matching of time ranges
+- **Breakdown Statistics**: Detailed analysis of candle composition
+
+#### **Timeframe Relationships**
+- **Compatible Pairs**: 1h→15m, 4h→1h, 1d→4h, etc.
+- **Validation Logic**: Primary must be evenly divisible by secondary
+- **Error Handling**: Clear warnings for incompatible timeframe combinations
+
 ### **Chart Selection Features**
 - **Selection Modes**:
   - Default click to select/deselect
@@ -364,7 +521,7 @@ python compute.py
 
 ### **Algorithm Features**
 - **Multiple Distance Metrics**: Manhattan, Euclidean, correlation, cosine similarity
-- **Full Range Mapping**: -100% (opposite patterns) to +100% (identical patterns)
+- **Full Range Visualization**: -100% (opposite) to +100% (identical)
 - **Color Visualization**: Intuitive green (similar) to red (different) mapping
 - **Statistical Analysis**: Comprehensive similarity statistics and pattern diversity
 
@@ -532,6 +689,279 @@ BATCH_SIZE=128
 - **Candle Selection**: Use advanced selection modes for detailed analysis
 - **Date Range Filtering**: Optimize data loading with intelligent date controls
 
+## 🏷️ **FVG (Fair Value Gap) Labeling System** ⭐ **NEW**
+
+### **Universal FVG Support**
+- **Complete FVG Tables**: Added FVG labeling tables for all SPY timeframes in the `labels` schema
+- **Fair Value Gap Detection**: Identifies gaps in price action where liquidity may be found
+- **Multi-Timeframe Coverage**: FVG labels available across all 7 SPY timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+- **Database Integration**: Seamlessly integrated with existing labeling infrastructure
+
+### **FVG Data Structure**
+```sql
+-- Example: labels.spy4h_fvg table structure
+CREATE TABLE labels.spy4h_fvg (
+    id SERIAL PRIMARY KEY,
+    label VARCHAR,               -- 'fvg_red' or 'fvg_green'
+    value DECIMAL,               -- Price value of the FVG
+    color_order TEXT[],          -- Array of color sequences
+    pointer TIMESTAMP WITH TIME ZONE[]  -- Time range pointers
+);
+```
+
+### **FVG Types**
+- **FVG Red**: Bearish fair value gaps (price gaps down)
+- **FVG Green**: Bullish fair value gaps (price gaps up)
+- **Color Order Tracking**: Maintains sequence of candle colors around the gap
+- **Time Range Pointers**: Precise timestamp arrays for gap identification
+
+## 🤖 **Machine Learning Prediction Models** ⭐ **NEW**
+
+### **SPY Prediction Model v1** (`spy_prediction_model_v1.py`)
+- **Multi-Timeframe Architecture**: Uses all 7 SPY timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d)
+- **Feature Engineering**: Combines raw_ohlcv vectors (5D) + iso_ohlc vectors (4D) + future binary labels
+- **Model Ensemble**: Random Forest, Gradient Boosting, XGBoost, Logistic Regression, LSTM
+- **Hierarchical Approach**: Professional trading system methodology
+- **Sequence Analysis**: 60-period LSTM sequences for temporal pattern recognition
+- **Performance Metrics**: Classification reports, confusion matrices, ROC-AUC scoring
+
+### **SPY Prediction Model v2** (`spy_prediction_model_v2_feature_expansion_demo.py`)
+- **Massive Feature Expansion**: 21 → 400+ features
+- **Complete Vector Integration**: All 8 vector types (raw_ohlc, raw_ohlcv, norm_ohlc, norm_ohlcv, BERT_ohlc, BERT_ohlcv, iso_ohlc, iso_ohlcv)
+- **Advanced Technical Indicators**: 50+ TA-Lib indicators including RSI, MACD, Bollinger Bands, Stochastic, Williams %R
+- **Multi-Timeframe Context**: Cross-timeframe correlation analysis
+- **Market Regime Detection**: Volatility regimes, trend strength, trading sessions
+- **Enhanced Model Architecture**: Improved LSTM, dynamic ensemble weighting
+
+### **Model Training Pipeline**
+```python
+# Feature Types in v2
+1. Core Vectors (789 features)
+   - raw_ohlc_vec (4D), raw_ohlcv_vec (5D)
+   - norm_ohlc (4D), norm_ohlcv (5D)
+   - BERT_ohlc (384D), BERT_ohlcv (384D)
+   - iso_ohlc (4D), iso_ohlcv (4D)
+
+2. Technical Indicators (50+ features)
+   - Momentum: RSI, MACD, Stochastic, Williams %R
+   - Volume: OBV, VPT, A/D Line
+   - Volatility: ATR, Bollinger Bands
+   - Trend: ADX, CCI, ROC
+
+3. Market Context (35+ features)
+   - Cross-timeframe correlations
+   - Market regime indicators
+   - Calendar effects
+```
+
+## 🚀 **Startup & Development Tools** ⭐ **NEW**
+
+### **Automated Startup Script** (`start.py`)
+- **Intelligent Dependency Checking**: Validates all required packages before startup
+- **Database Connection Testing**: Pre-flight database connectivity verification
+- **Automated Server Launch**: One-command FastAPI server startup
+- **Health Monitoring**: Built-in health check endpoints
+- **Error Handling**: Graceful failure handling with informative logging
+- **Development Mode**: Hot reload enabled for rapid development
+
+### **Usage**
+```bash
+# Start the entire system with one command
+python start.py
+
+# Features:
+# ✅ Dependency validation
+# ✅ Database connection test
+# ✅ Automatic server startup
+# ✅ Health monitoring
+# ✅ Development mode with hot reload
+```
+
+### **Development Workflow**
+```bash
+# Quick development setup
+python start.py                    # Backend server
+npm run dev                        # Frontend development
+```
+
+## 📊 **Advanced Chart Integration** ⭐ **NEW**
+
+### **TradingView Advanced Charts** (`ADVANCED_CHARTS_INTEGRATION.md`)
+- **Professional Chart Library**: Enterprise-grade charting capabilities
+- **100+ Technical Indicators**: Moving averages, oscillators, volume studies
+- **70+ Drawing Tools**: Trend lines, Fibonacci, patterns, annotations
+- **Multiple Chart Types**: Renko, Point & Figure, Kagi, Line Break
+- **Volume Profile**: Market depth and volume analysis
+- **Symbol Comparison**: Multi-asset overlay analysis
+- **Study Templates**: Pre-configured indicator combinations
+
+### **Migration Strategy**
+- **Phase 1**: Parallel implementation with existing lightweight-charts
+- **Phase 2**: Advanced Charts component with enhanced features
+- **Seamless Integration**: Maintains existing data pipeline and selection functionality
+- **Theme Support**: Dark/light mode compatibility
+- **Custom Datafeed**: Integration with existing OHLCV data structure
+
+### **Advanced Features Available**
+```javascript
+// Enhanced chart capabilities
+enabled_features: [
+    "study_templates",
+    "compare_symbol", 
+    "volume_force_overlay",
+    "left_toolbar",
+    "header_symbol_search",
+    "header_interval_dialog_button"
+]
+```
+
+### **Chart Activation Guide** (`CHART_ACTIVATION.md`)
+- **Quick Setup**: 3-step activation process
+- **Interactive Features**: Zoom, pan, crosshair, tooltips
+- **Technical Indicators**: SMA, EMA, Bollinger Bands
+- **Volume Visualization**: Histogram overlay
+- **Responsive Design**: Auto-resizing charts
+- **Professional Styling**: TradingView-like appearance
+
+## 🔧 **Development Infrastructure** ⭐ **NEW**
+
+### **Modular Architecture** (`src/README.md`)
+- **Component Library**: 23+ reusable components
+- **Separation of Concerns**: Data, vector, and chart components
+- **PropTypes Validation**: Type checking for all components
+- **Context API**: Global state management
+- **Custom Hooks**: Data fetching and theme management
+- **Utility Functions**: Centralized formatting and calculations
+
+### **Component Structure**
+```
+src/components/
+├── shared/                    # Reusable UI components
+│   ├── InfoTooltip.jsx       # Helpful tooltips
+│   ├── ThemeToggle.jsx       # Dark/light mode
+│   ├── LoadingSpinner.jsx    # Loading states
+│   └── ErrorDisplay.jsx      # Error handling
+├── data-dashboard/           # Data analysis components
+│   ├── DataDashboard.jsx     # Main container
+│   ├── DataStats.jsx         # Statistics cards
+│   ├── DataControls.jsx      # Symbol/timeframe controls
+│   ├── DataTable.jsx         # Trading data table
+│   ├── AdvancedFilters.jsx   # Search and filters
+│   ├── Pagination.jsx        # Table pagination
+│   ├── TablesList.jsx        # Table overview
+│   └── DebugPanel.jsx        # Debug information
+└── vector-dashboard/         # Vector analysis components
+    ├── VectorDashboard.jsx   # Main container
+    ├── VectorControls.jsx    # Vector controls
+    ├── VectorStats.jsx       # Statistics display
+    ├── VectorTypeSelector.jsx # Type selection
+    ├── VectorVisualization.jsx # Visualization container
+    ├── VectorHeatmap.jsx     # Heatmap display
+    └── VectorComparison.jsx  # Side-by-side analysis
+```
+
+### **Development Tools**
+- **ESLint Configuration**: Modern React linting rules
+- **PostCSS Setup**: TailwindCSS processing
+- **Vite Configuration**: Fast development server
+- **TypeScript Ready**: Type definitions included
+- **Hot Module Replacement**: Instant code updates
+
+## 🐛 **Current Development Status** ⭐ **NEW**
+
+### **Active Development Areas** (`current bugs.txt`)
+- **Vector Dashboard**: Enhanced heatmap interaction (click-to-info functionality)
+- **LLM Dashboard**: Backend integration with LangChain/LlamaIndex
+- **AI Model Integration**: Hugging Face models and GPT/Claude APIs
+- **Similarity Analysis**: Global mean vector and single candle vector integration
+- **Chart Marking**: Model training for chart annotation capabilities
+
+### **Development Priorities**
+```bash
+# Current focus areas:
+1. Backend similarity checks using global mean vectors
+2. Single candle vector similarity analysis
+3. Combined similarity incorporating norm_ohlc + iso_ohlc
+4. Model training for chart marking (768-dimensional vectors)
+5. SVG visibility for chart analysis
+```
+
+### **Technical Debt & Improvements**
+- **Code Cleanup**: Remove unnecessary components and optimize performance
+- **Backend Enhancement**: Strengthen API layer and error handling
+- **Frontend Refinement**: Clean up UI once backend is solid
+- **Feature Integration**: Implement AI-suggested improvements
+
+## 📈 **Performance & Optimization** ⭐ **NEW**
+
+### **Current Performance Metrics**
+- **TradingDashboard.jsx**: 194KB, 4,329 lines (monolithic implementation)
+- **Chart.jsx**: 145KB, 3,543 lines (comprehensive charting)
+- **LLMDashboard.jsx**: 99KB, 2,288 lines (AI assistant framework)
+- **Backend Services**: 22KB trading service, 12KB router logic
+
+### **Optimization Strategies**
+- **Modular Architecture**: Available but not currently active
+- **Component Splitting**: 23+ reusable components ready for use
+- **Lazy Loading**: Component-level code splitting
+- **Memory Management**: Optimized for large datasets
+- **GPU Acceleration**: CUDA support for vector processing
+
+### **Scalability Considerations**
+- **Database Optimization**: Efficient queries with proper indexing
+- **Caching Strategy**: Label queries and vector calculations
+- **Batch Processing**: Configurable batch sizes for ML operations
+- **Memory Monitoring**: Browser memory management for large selections
+
+## 🔬 **Research & Development** ⭐ **NEW**
+
+### **SPY Prediction Model v2 Plan** (`SPY_Prediction_Model_v2_Plan.md`)
+- **Strategic Improvements**: 21 → 400+ features
+- **Advanced Architecture**: Enhanced LSTM and ensemble methods
+- **Market Regime Detection**: Volatility and trend analysis
+- **Multi-Timeframe Context**: Cross-timeframe correlation features
+- **Performance Enhancement**: Dynamic model weighting and selection
+
+### **Feature Expansion Strategy**
+```python
+# v2 Feature Categories:
+1. Core Vectors (789 features)
+2. Technical Indicators (50+ features)
+3. Multi-Timeframe Context (35+ features)
+4. Market Regime Detection (15+ features)
+5. Calendar Effects (20+ features)
+6. Volatility Analysis (10+ features)
+```
+
+### **Model Architecture Improvements**
+- **Enhanced LSTM**: Multi-layer with attention mechanisms
+- **Dynamic Ensemble**: Adaptive model weighting
+- **Feature Selection**: Automated feature importance ranking
+- **Hyperparameter Optimization**: Grid search and Bayesian optimization
+- **Cross-Validation**: Time series specific validation strategies
+
+## 🎯 **Integration Points** ⭐ **NEW**
+
+### **AI/ML Pipeline Integration**
+- **Vector Generation**: `compute.py` with 6 vector types
+- **Model Training**: SPY prediction models v1 and v2
+- **Feature Engineering**: Advanced technical indicators
+- **Backtesting**: Historical strategy validation
+- **Real-time Prediction**: Live market analysis
+
+### **Database Schema Evolution**
+- **Trading Tables**: 21 tables across 3 symbols and 7 timeframes
+- **Label Tables**: TJR, swing, and FVG labels for all SPY timeframes
+- **Vector Columns**: 8 different vector types per table
+- **Future Labels**: Binary classification for price direction prediction
+
+### **API Endpoint Expansion**
+- **Core Trading**: OHLCV data with optional vectors
+- **Label Systems**: TJR, swing, and FVG labels
+- **Shape Similarity**: Advanced pattern analysis
+- **Model Predictions**: Real-time forecasting endpoints
+- **Backtesting**: Historical strategy testing
+
 ---
 
 **Daygent** represents a comprehensive agentic trading intelligence platform, combining quantitative analysis, machine learning, and professional trading tools in a unified interface. The monolithic architecture ensures seamless integration while the modular components provide future scalability options.
@@ -539,12 +969,15 @@ BATCH_SIZE=128
 **🎯 Current Status**: Fully functional with 4 integrated dashboards, universal TJR and swing marker support, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
 
 **Latest Updates**:
-- 🏷️ Universal TJR and Swing marker support for all SPY timeframes
-- 🎯 Advanced chart selection modes with keyboard shortcuts
-- 📅 Enhanced date range controls with multiple fetch modes
-- 🔍 Debug panel for data quality verification
-- 📊 Selected Candles Panel for global selection management
-- 🔄 Dynamic table detection for flexible naming conventions
+- 🎯 **Advanced Candle Selection System**: Interactive multi-mode selection with drag, range, and time-based selection
+- 📊 **Multi-Timeframe Breakdown Analysis**: Secondary chart showing candle composition across timeframes
+- 🏷️ **Enhanced Trading Labels API**: Universal TJR and swing marker support with flexible table naming
+- 🤖 **Advanced ML Vector Pipeline**: Six vector types with GPU acceleration and BERT embeddings
+- 🔬 **Multi-Metric Shape Similarity**: Hybrid similarity engine with 4 distance metrics
+- 📈 **Professional Chart Features**: Lightweight Charts v5.0 with advanced selection overlays
+- 🔄 **Dynamic Vector Detection**: Automatic detection of available vector types from database
+- 📊 **Real-time Selection Statistics**: Live analysis of selected candle patterns and trends
+- 🎯 **Binary Classification Labels**: Future price direction column added to all 21 backtest tables
 
 **Credits**:
 - Universal marker support and robust table detection added July 2024

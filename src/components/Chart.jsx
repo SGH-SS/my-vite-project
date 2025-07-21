@@ -6,6 +6,257 @@ import { useDateRanges } from '../hooks/useDateRanges';
 import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 
+// FVG Box Primitive for drawing rectangular boxes around Fair Value Gaps
+class FVGBoxPrimitive {
+  constructor() {
+    this._fvgBoxes = [];
+    this._requestUpdate = null;
+    this._chart = null;
+    this._series = null;
+    console.log('🟢 FVGBoxPrimitive constructed');
+  }
+
+  attached(param) {
+    console.log('🟢 FVG Primitive attached() called');
+    this._requestUpdate = param.requestUpdate;
+    
+    console.log('🟢 Chart ref available:', !!this._chart, 'Series ref available:', !!this._series);
+    console.log('🟢 Current FVG boxes on attach:', this._fvgBoxes?.length || 0);
+    
+    // Test coordinate conversion on attach
+    if (this._chart && this._series) {
+      console.log('🟢 Testing coordinate conversion on attach...');
+      const testPrice = 605.0;
+      const testCoord = this._series.priceToCoordinate(testPrice);
+      console.log(`🟢 Test coordinate for price ${testPrice}: ${testCoord}`);
+    }
+    
+    // If we have no boxes but persistent storage does, restore them
+    if ((!this._fvgBoxes || this._fvgBoxes.length === 0) && 
+        this._persistentStorage?.current?.boxes?.length > 0) {
+      console.log('🔄 Restoring', this._persistentStorage.current.boxes.length, 'FVG boxes from persistent storage');
+      this._fvgBoxes = [...this._persistentStorage.current.boxes];
+      this.updateAllViews();
+    }
+  }
+
+  detached() {
+    console.log('🟢 FVG Primitive detached() called');
+    console.log('🟢 Had', this._fvgBoxes?.length || 0, 'FVG boxes when detached');
+    this._requestUpdate = null;
+    this._chart = null;
+    this._series = null;
+    // DON'T clear _fvgBoxes - keep them for reattachment
+  }
+
+  updateAllViews() {
+    // Primitive updates naturally - no logging spam
+    if (this._requestUpdate) {
+      this._requestUpdate();
+    }
+  }
+
+  updateFVGBoxes(fvgData) {
+    this._fvgBoxes = fvgData || [];
+    console.log(`📦 FVG primitive updated with ${this._fvgBoxes.length} boxes`);
+    
+    if (this._requestUpdate) {
+      this._requestUpdate();
+    }
+    
+    // Trigger a visual update
+    this.updateAllViews();
+  }
+
+  paneViews() {
+    return [
+      {
+        renderer: () => {
+          return {
+            draw: (target) => {
+              this._drawFVGBoxes(target);
+            }
+          };
+        }
+      }
+    ];
+  }
+
+  _drawFVGBoxes(target) {
+    // Get the canvas context 
+    let ctx = target.canvasRenderingContext2D;
+    if (!ctx) {
+      ctx = target._context;
+    }
+    
+    if (!ctx) {
+      return;
+    }
+    
+    // Draw test rectangle to confirm primitive works
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 0, 255, 0.8)'; // Bright magenta
+    ctx.fillRect(100, 100, 200, 100);
+    ctx.restore();
+    
+    // Draw actual FVG boxes
+    if (!this._fvgBoxes || this._fvgBoxes.length === 0) {
+      return;
+    }
+    
+    // Get fresh chart and series references from component refs
+    const freshChart = this._chartRef?.current;
+    const freshSeries = this._seriesRef?.current;
+    
+    console.log(`🔥 Fresh references: chart=${!!freshChart}, series=${!!freshSeries}`);
+    
+    if (!freshChart || !freshSeries) {
+      console.log(`🔥 No fresh references available, using stored ones`);
+      if (!this._chart || !this._series) {
+        console.log(`🔥 No chart/series refs available at all`);
+        return;
+      }
+    } else {
+      // Update our stored references with fresh ones
+      this._chart = freshChart;
+      this._series = freshSeries;
+      console.log(`🔥 Updated primitive with fresh chart and series references`);
+      
+      // Test coordinate conversion with fresh references
+      const testCoord = this._series.priceToCoordinate(605.0);
+      console.log(`🔥 Fresh reference coordinate test for 605.0: ${testCoord}`);
+    }
+    
+    console.log('🔥 Drawing', this._fvgBoxes.length, 'FVG boxes');
+    
+    if (!this._chart || !this._series) {
+      console.log('🔥 Missing chart/series refs');
+      return;
+    }
+    
+    ctx.save();
+    
+    this._fvgBoxes.forEach((fvgBox, index) => {
+      try {
+        const { candles, label } = fvgBox;
+        
+        if (!candles || candles.length !== 3) {
+          console.log(`🔥 Invalid candles for box ${index}`);
+          return;
+        }
+        
+        // Sort candles by time
+        const sortedCandles = [...candles].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        // Convert times to coordinates
+        const startTime = Math.floor(new Date(sortedCandles[0].timestamp).getTime() / 1000);
+        const endTime = Math.floor(new Date(sortedCandles[2].timestamp).getTime() / 1000);
+        
+        const x1 = this._chart.timeScale().timeToCoordinate(startTime);
+        const x2 = this._chart.timeScale().timeToCoordinate(endTime);
+        
+        if (x1 === null || x2 === null) {
+          console.log(`🔥 Time coordinates not available for box ${index}`);
+          return;
+        }
+        
+        // Calculate FVG gap prices
+        let gapHigh, gapLow;
+        if (label.label === 'fvg_green') {
+          gapHigh = parseFloat(sortedCandles[2].low);
+          gapLow = parseFloat(sortedCandles[0].high);
+        } else {
+          gapHigh = parseFloat(sortedCandles[0].low);
+          gapLow = parseFloat(sortedCandles[2].high);
+        }
+        
+        // Ensure correct order
+        if (gapHigh < gapLow) {
+          [gapHigh, gapLow] = [gapLow, gapHigh];
+        }
+        
+        console.log(`🔥 Trying to convert prices: gapHigh=${gapHigh}, gapLow=${gapLow}`);
+        console.log(`🔥 Series available:`, !!this._series);
+        
+        const y1 = this._series.priceToCoordinate(gapHigh);
+        const y2 = this._series.priceToCoordinate(gapLow);
+        
+        console.log(`🔥 Price coordinates: y1=${y1}, y2=${y2}`);
+        
+        if (y1 === null || y2 === null) {
+          console.log(`🔥 Price coordinates not available for box ${index} - trying visible range...`);
+          
+          // Try using visible prices instead
+          const visibleHigh = Math.max(...sortedCandles.map(c => parseFloat(c.high)));
+          const visibleLow = Math.min(...sortedCandles.map(c => parseFloat(c.low)));
+          
+          console.log(`🔥 Using visible range: high=${visibleHigh}, low=${visibleLow}`);
+          
+          const testY1 = this._series.priceToCoordinate(visibleHigh);
+          const testY2 = this._series.priceToCoordinate(visibleLow);
+          
+          if (testY1 === null || testY2 === null) {
+            console.log(`🔥 Even visible range coordinates not available`);
+            return;
+          }
+          
+          // Use the visible coordinates
+          gapHigh = visibleHigh;
+          gapLow = visibleLow;
+        }
+        
+        // Recalculate coordinates with corrected prices
+        const finalY1 = this._series.priceToCoordinate(gapHigh);
+        const finalY2 = this._series.priceToCoordinate(gapLow);
+        
+        console.log(`🔥 Final coordinates: x1=${x1}, x2=${x2}, finalY1=${finalY1}, finalY2=${finalY2}`);
+        
+        // Final check that all coordinates are valid
+        if (finalY1 === null || finalY2 === null) {
+          console.log(`🔥 Final coordinates still not available for box ${index}`);
+          return;
+        }
+        
+        // Calculate box dimensions
+        const boxX = Math.min(x1, x2) - 20;
+        const boxY = Math.min(finalY1, finalY2);
+        const boxWidth = Math.abs(x2 - x1) + 40;
+        const boxHeight = Math.abs(finalY2 - finalY1);
+        
+        console.log(`🔥 Box dimensions: x=${boxX}, y=${boxY}, width=${boxWidth}, height=${boxHeight}`);
+        
+        // Draw the FVG box
+        const isGreen = label.label === 'fvg_green';
+        const fillColor = isGreen ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+        const borderColor = isGreen ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)';
+        
+        // Fill
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+        
+        // Border
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 4]);
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+        
+        // Label
+        ctx.setLineDash([]);
+        ctx.fillStyle = borderColor;
+        ctx.font = '14px Arial';
+        ctx.fillText(isGreen ? 'FVG+' : 'FVG-', boxX + 8, boxY + 20);
+        
+        console.log(`🔥 ✅ Successfully drew FVG box ${index}: ${label.label} at (${boxX},${boxY}) ${boxWidth}x${boxHeight}`);
+        
+      } catch (error) {
+        console.error(`🔥 Error drawing FVG box ${index}:`, error);
+      }
+    });
+    
+    ctx.restore();
+  }
+}
+
 // Reusable InfoTooltip component (shared across dashboards)
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
   const [activeTooltip, setActiveTooltip] = useState(null);
@@ -1170,6 +1421,407 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
   );
 };
 
+const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, persistentFvgDataRef, fvgPrimitiveRef }) => {
+  const [showFvgGreens, setShowFvgGreens] = useState(false);
+  const [showFvgReds, setShowFvgReds] = useState(false);
+  const [fvgLabelsData, setFvgLabelsData] = useState(null);
+  const [matchingFvgLabels, setMatchingFvgLabels] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [hasFvgTable, setHasFvgTable] = useState(false);
+  const [availableFvgTables, setAvailableFvgTables] = useState([]);
+  const [isFvgLoaded, setIsFvgLoaded] = useState(false);
+
+  const {
+    selectedSymbol,
+    selectedTimeframe
+  } = useTrading();
+
+  // Check which FVG tables are available with retry logic
+  useEffect(() => {
+    const checkAvailableFvgTables = async (retryCount = 0) => {
+      const spyTimeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+      const availableFvg = [];
+      
+      for (const tf of spyTimeframes) {
+        try {
+          const response = await fetch(`http://localhost:8000/api/trading/fvg-labels/spy/${tf}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+              availableFvg.push(`spy${tf}_fvg`);
+            } else if (Array.isArray(data)) {
+              // Table exists but is empty
+              availableFvg.push(`spy${tf}_fvg (empty)`);
+            }
+          } else if (response.status === 404) {
+            console.log(`FVG table spy${tf}_fvg not found (404)`);
+          } else {
+            console.warn(`FVG endpoint returned ${response.status} for spy${tf}`);
+          }
+        } catch (err) {
+          console.warn(`Error checking FVG table spy${tf}:`, err);
+          
+          // If this is the first attempt and we get a connection error, retry in 2 seconds
+          if (retryCount === 0 && err.message.includes('Failed to fetch')) {
+            console.log('Backend may not be ready yet, will retry FVG table check in 2 seconds...');
+            setTimeout(() => checkAvailableFvgTables(1), 2000);
+            return;
+          }
+        }
+      }
+      
+      setAvailableFvgTables(availableFvg);
+      console.log(`🟢 FVG table availability check complete:`, availableFvg);
+    };
+    
+    // Initial check with retry capability
+    checkAvailableFvgTables();
+  }, []);
+
+  // Fetch FVG data when component mounts with retry logic
+  useEffect(() => {
+    const fetchFvgData = async (retryCount = 0) => {
+      if (!selectedSymbol || !selectedTimeframe) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const endpoint = `http://localhost:8000/api/trading/fvg-labels/${selectedSymbol}/${selectedTimeframe}`;
+        console.log('🟢 Fetching FVG labels from:', endpoint);
+        
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.log(`✅ FVG table ${selectedSymbol}${selectedTimeframe}_fvg not found (expected if no FVG data)`);
+            setFvgLabelsData([]);
+            setHasFvgTable(false);
+            setIsFvgLoaded(true);
+            setError(null); // Clear any previous errors
+          } else {
+            console.warn(`FVG endpoint returned ${response.status} for ${selectedSymbol}${selectedTimeframe}`);
+            setFvgLabelsData([]);
+            setHasFvgTable(false);
+            setIsFvgLoaded(true);
+          }
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('🟢 FVG data received:', data);
+        
+        if (Array.isArray(data)) {
+          setFvgLabelsData(data);
+          setHasFvgTable(data.length > 0);
+          console.log('📊 FVG stats:', {
+            total: data.length,
+            fvg_green: data.filter(l => l.label === 'fvg_green').length,
+            fvg_red: data.filter(l => l.label === 'fvg_red').length
+          });
+          setIsFvgLoaded(true);
+          setError(null); // Clear any previous errors
+        } else {
+          setFvgLabelsData([]);
+          setHasFvgTable(false);
+          setIsFvgLoaded(true);
+        }
+        
+      } catch (err) {
+        console.error('❌ Error fetching FVG labels:', err);
+        
+        // If this is the first attempt and we get a connection error, retry
+        if (retryCount === 0 && err.message.includes('Failed to fetch')) {
+          console.log('Backend may not be ready yet, retrying FVG fetch in 1 second...');
+          setTimeout(() => fetchFvgData(1), 1000);
+          return;
+        }
+        
+        if (err.message.includes('Failed to fetch') || err.message.includes('JSON')) {
+          setError(err.message);
+        } else {
+          setError(null);
+        }
+        setFvgLabelsData([]);
+        setHasFvgTable(false);
+        setIsFvgLoaded(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFvgData();
+  }, [selectedSymbol, selectedTimeframe]);
+
+  // Scan current candles for matching FVG labels (3 candles per FVG)
+  useEffect(() => {
+    if (!fvgLabelsData || fvgLabelsData.length === 0 || !chartDataRef?.current) {
+      setMatchingFvgLabels([]);
+      return;
+    }
+
+    console.log('🔍 Scanning candles for FVG labels...');
+    const candles = chartDataRef.current;
+    const matches = [];
+
+    fvgLabelsData.forEach(label => {
+      if (!label.pointer || !Array.isArray(label.pointer) || label.pointer.length < 3) {
+        return;
+      }
+      
+      // FVG pointers should have 3 timestamps for the 3 candles
+      const fvgTimestamps = label.pointer.map(ts => new Date(ts).getTime());
+      const matchingCandles = [];
+      
+      // Find all 3 candles that match the FVG timestamps
+      candles.forEach(candle => {
+        const candleTime = new Date(candle.timestamp).getTime();
+        if (fvgTimestamps.includes(candleTime)) {
+          matchingCandles.push(candle);
+        }
+      });
+      
+      // If we found all 3 candles for this FVG, add them as a match
+      if (matchingCandles.length === 3) {
+        // Sort candles by timestamp to ensure proper order
+        matchingCandles.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        matches.push({
+          candles: matchingCandles,
+          label: label,
+          fvgTimestamps: fvgTimestamps
+        });
+      }
+    });
+
+    console.log(`🎯 Found ${matches.length} matching FVG groups:`, matches);
+    setMatchingFvgLabels(matches);
+  }, [fvgLabelsData, chartDataRef?.current]);
+
+  // Handle toggle changes and update chart markers
+  useEffect(() => {
+    if (!chartRef?.current || !priceSeriesRef?.current) {
+      return;
+    }
+
+    console.log('🔄 Updating FVG chart markers:', { 
+      showFvgGreens, 
+      showFvgReds,
+      fvgMatches: matchingFvgLabels.length 
+    });
+    
+    // Trigger the main chart highlighting update which will include FVG markers
+    const updateEvent = new CustomEvent('updateChartHighlights');
+    document.dispatchEvent(updateEvent);
+    
+    // Fit content
+    try { 
+      chartRef.current.timeScale().fitContent(); 
+    } catch (e) {
+      console.warn('Could not fit content:', e);
+    }
+  }, [showFvgGreens, showFvgReds, matchingFvgLabels, chartRef?.current, priceSeriesRef?.current]);
+
+  return (
+    <div 
+      className={`rounded-lg shadow-md transition-colors duration-200 mt-4 ${
+        isDarkMode ? 'bg-gray-800' : 'bg-white'
+      }`}
+      data-fvg-labels={JSON.stringify({ showFvgGreens, showFvgReds, matchingFvgLabels })}
+    >
+      <div className={`px-6 py-4 border-b transition-colors duration-200 ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <h3 className={`text-lg font-semibold ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>
+              FVG (Fair Value Gap) Markers
+              {hasFvgTable && (
+                <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                  ✅ Available
+                </span>
+              )}
+              {!hasFvgTable && !loading && !error && (
+                <span className="ml-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                  ⚠️ No Data
+                </span>
+              )}
+            </h3>
+            <InfoTooltip id="fvg-labels" content={
+              <div>
+                <p className="font-semibold mb-2">🟢 FVG (Fair Value Gap) Trading Markers</p>
+                <p className="mb-2">Visual boxes highlighting fair value gaps on the chart:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>FVG Green:</strong> Green boxes around bullish fair value gaps (3 candles)</li>
+                  <li><strong>FVG Red:</strong> Red boxes around bearish fair value gaps (3 candles)</li>
+                  <li><strong>Gap Detection:</strong> Shows areas where price left liquidity gaps</li>
+                  <li><strong>Toggle Display:</strong> Show/hide each FVG type independently</li>
+                  <li><strong>Three Candle Pattern:</strong> Each FVG encompasses exactly 3 candles</li>
+                  <li><strong>Liquidity Zones:</strong> Potential areas for price reaction and fills</li>
+                </ul>
+                <p className="mt-2 text-xs">Toggle these on to see FVG boxes highlighting gaps on your chart.</p>
+              </div>
+            } isDarkMode={isDarkMode} />
+          </div>
+          <div className="flex items-center gap-4">
+            {/* FVG Green Toggle */}
+            <div className="flex items-center gap-2">
+              <label className={`text-sm font-medium ${
+                isDarkMode ? 'text-green-300' : 'text-green-700'
+              }`}>
+                FVG Green:
+              </label>
+              <button
+                onClick={() => {
+                  const newValue = !showFvgGreens;
+                  setShowFvgGreens(newValue);
+                  persistentFvgDataRef.current.enabled.green = newValue;
+                  console.log('🟢 FVG Green toggled to:', newValue);
+                  
+                  // Trigger full reprocessing to include both red and green
+                  console.log('🟢 Triggering full FVG reprocessing...');
+                  debouncedUpdateChartHighlights();
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  showFvgGreens
+                    ? 'bg-green-600 focus:ring-green-500'
+                    : isDarkMode
+                      ? 'bg-gray-600 focus:ring-gray-500'
+                      : 'bg-gray-200 focus:ring-gray-500'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showFvgGreens ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs ${
+                showFvgGreens ? 'text-green-600' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {showFvgGreens ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            
+            {/* FVG Red Toggle */}
+            <div className="flex items-center gap-2">
+              <label className={`text-sm font-medium ${
+                isDarkMode ? 'text-red-300' : 'text-red-700'
+              }`}>
+                FVG Red:
+              </label>
+              <button
+                onClick={() => {
+                  const newValue = !showFvgReds;
+                  setShowFvgReds(newValue);
+                  persistentFvgDataRef.current.enabled.red = newValue;
+                  console.log('🔴 FVG Red toggled to:', newValue);
+                  
+                  // Trigger full reprocessing to include both red and green
+                  console.log('🔴 Triggering full FVG reprocessing...');
+                  debouncedUpdateChartHighlights();
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  showFvgReds
+                    ? 'bg-red-600 focus:ring-red-500'
+                    : isDarkMode
+                      ? 'bg-gray-600 focus:ring-gray-500'
+                      : 'bg-gray-200 focus:ring-gray-500'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showFvgReds ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs ${
+                showFvgReds ? 'text-red-600' : isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {showFvgReds ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            
+
+          </div>
+        </div>
+        
+        {(showFvgGreens || showFvgReds) && (
+          <div className={`mt-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Displaying: {showFvgGreens ? 'Green FVG boxes' : ''} {showFvgGreens && showFvgReds ? ' & ' : ''} {showFvgReds ? 'Red FVG boxes' : ''} around 3-candle gaps
+          </div>
+        )}
+        
+        {/* Show which tables support FVG labels */}
+        <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          <div className="mb-1">
+            🟢 FVG labels available for: SPY tables with FVG data
+            {availableFvgTables.length > 0 ? (
+              <span className="ml-1">({availableFvgTables.join(', ')})</span>
+            ) : (
+              <span className="ml-1">(checking availability...)</span>
+            )}
+          </div>
+          {selectedSymbol !== 'spy' && (
+            <div className="mt-1">
+              <span className="text-orange-500">⚠️ Current symbol ({selectedSymbol}) may not have FVG data</span>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Status Display */}
+      {(loading || error || fvgLabelsData || matchingFvgLabels.length > 0) && (
+        <div className={`px-6 py-3 border-t transition-colors duration-200 ${
+          isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className="space-y-2">
+            {loading && (
+              <div className={`text-sm ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                🔄 Loading FVG data...
+              </div>
+            )}
+            
+            {error && (
+              <div className={`text-sm ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                ❌ Network Error: {error}
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Unable to connect to FVG labels service. Check your connection.
+                </div>
+              </div>
+            )}
+            
+            {!loading && !error && (
+              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {fvgLabelsData && fvgLabelsData.length > 0 ? (
+                  <>
+                    📊 FVG data loaded from {selectedSymbol}{selectedTimeframe}_fvg: {fvgLabelsData.length} total 
+                    ({fvgLabelsData.filter(l => l.label === 'fvg_green').length} green, {fvgLabelsData.filter(l => l.label === 'fvg_red').length} red)
+                  </>
+                ) : (
+                  <>
+                    📊 No FVG data available for {selectedSymbol}{selectedTimeframe}. 
+                    The {selectedSymbol}{selectedTimeframe}_fvg table may not exist or may be empty.
+                  </>
+                )}
+              </div>
+            )}
+            
+            {matchingFvgLabels.length > 0 && (
+              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                🎯 Found {matchingFvgLabels.length} matching FVG groups in current chart
+                ({matchingFvgLabels.filter(m => m.label.label === 'fvg_green').length} green, {matchingFvgLabels.filter(m => m.label.label === 'fvg_red').length} red)
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TradingChartDashboard = ({ 
   tables,
   isDarkMode 
@@ -1246,6 +1898,8 @@ const TradingChartDashboard = ({
   const priceSeriesRef = useRef(null);
   const chartDataRef = useRef(null); // Store original chart data
   const timeScaleRef = useRef(null); // Store timescale reference
+  const fvgPrimitiveRef = useRef(null); // Store FVG primitive reference
+  const persistentFvgDataRef = useRef({ boxes: [], enabled: { red: false, green: false } }); // Persistent FVG data
   
   // Secondary chart refs
   const secondaryChartContainerRef = useRef(null);
@@ -1425,6 +2079,25 @@ const TradingChartDashboard = ({
         console.warn('⚠️ TJR labels element not found');
       }
 
+      // Get FVG labels state
+      const fvgLabelsElement = document.querySelector('[data-fvg-labels]');
+      let fvgState = { 
+        showFvgGreens: false, 
+        showFvgReds: false, 
+        matchingFvgLabels: []
+      };
+      
+      if (fvgLabelsElement) {
+        try {
+          fvgState = JSON.parse(fvgLabelsElement.getAttribute('data-fvg-labels'));
+          console.log('🟢 FVG State:', fvgState);
+        } catch (e) {
+          console.warn('Could not parse FVG labels state');
+        }
+      } else {
+        console.warn('⚠️ FVG labels element not found');
+      }
+
       // Create TJR labels lookup map
       const tjrLabelsByTimestamp = {};
       if (tjrState.matchingLabels && Array.isArray(tjrState.matchingLabels)) {
@@ -1514,8 +2187,71 @@ const TradingChartDashboard = ({
       }
       priceSeriesRef.current = newSeries;
 
-      // --- Build the combined marker array (both TJR and swing markers) ---
+      // --- Build the combined marker array (TJR and swing markers) ---
       const allMarkers = [];
+      
+      // Update FVG boxes via primitive instead of markers
+      const fvgBoxes = [];
+      
+      // Check persistent state first - use it if toggles are enabled
+      const shouldShowReds = persistentFvgDataRef.current.enabled.red && fvgState.showFvgReds;
+      const shouldShowGreens = persistentFvgDataRef.current.enabled.green && fvgState.showFvgGreens;
+      
+      console.log('🔍 FVG State Check:', {
+        showFvgGreens: fvgState.showFvgGreens,
+        showFvgReds: fvgState.showFvgReds,
+        persistentRed: persistentFvgDataRef.current.enabled.red,
+        persistentGreen: persistentFvgDataRef.current.enabled.green,
+        shouldShowReds,
+        shouldShowGreens,
+        matchingFvgLabels: fvgState.matchingFvgLabels?.length,
+        persistentBoxes: persistentFvgDataRef.current.boxes?.length
+      });
+      
+      // Use persistent boxes if they exist and toggles are on
+      // Always reprocess FVG data when toggles are on (don't rely on persistent cache)
+      if (fvgState.showFvgGreens || fvgState.showFvgReds) {
+        console.log(`🔄 Processing FVG data: ${fvgState.matchingFvgLabels?.length || 0} FVG groups, showGreens: ${fvgState.showFvgGreens}, showReds: ${fvgState.showFvgReds}`);
+        if (fvgState.matchingFvgLabels && Array.isArray(fvgState.matchingFvgLabels)) {
+          fvgState.matchingFvgLabels.forEach(fvgMatch => {
+            const { candles, label } = fvgMatch;
+            
+            console.log(`🔍 Processing FVG: ${label.label}, showGreens: ${fvgState.showFvgGreens}, showReds: ${fvgState.showFvgReds}`);
+            
+            // Only show if the corresponding toggle is on
+            if ((label.label === 'fvg_green' && !fvgState.showFvgGreens) ||
+                (label.label === 'fvg_red' && !fvgState.showFvgReds)) {
+              console.log(`🔍 Skipping ${label.label} due to toggle state`);
+              return;
+            }
+            
+            if (candles && candles.length === 3) {
+              // Prepare simplified box data for the primitive
+              const boxData = {
+                candles: candles,
+                label: label
+              };
+              fvgBoxes.push(boxData);
+              
+              console.log(`✅ Added ${label.label} FVG box for candles: ${candles.map(c => c.timestamp).join(', ')}`);
+            }
+          });
+        }
+      }
+      
+      // Store the boxes in persistent storage for future chart updates
+      if (fvgBoxes.length > 0) {
+        persistentFvgDataRef.current.boxes = fvgBoxes;
+        const redCount = fvgBoxes.filter(box => box.label.label === 'fvg_red').length;
+        const greenCount = fvgBoxes.filter(box => box.label.label === 'fvg_green').length;
+        console.log(`💾 Stored ${fvgBoxes.length} FVG boxes: ${redCount} red, ${greenCount} green`);
+      }
+      
+      // Update FVG primitive with new boxes
+      if (fvgPrimitiveRef.current) {
+        fvgPrimitiveRef.current.updateFVGBoxes(fvgBoxes);
+        console.log(`🟢 Updated FVG primitive with ${fvgBoxes.length} boxes`);
+      }
       
       // Build TJR markers
       if (tjrState.showTjrHighs || tjrState.showTjrLows) {
@@ -1612,13 +2348,15 @@ const TradingChartDashboard = ({
         createSeriesMarkers(priceSeriesRef.current, allMarkers);
         const tjrCount = allMarkers.filter(m => m.text === 'T' || m.text === '⊥').length;
         const swingCount = allMarkers.filter(m => m.text === '▲' || m.text === '▼').length;
-        console.log(`✅ Applied ${allMarkers.length} total markers (${tjrCount} TJR + ${swingCount} swing)`);
+        console.log(`✅ Applied ${allMarkers.length} total markers (${tjrCount} TJR + ${swingCount} swing) + ${fvgBoxes.length} FVG boxes`);
       } else {
         createSeriesMarkers(priceSeriesRef.current, []);
         console.log('📝 No markers to display – cleared all markers');
       }
 
-      // 4️⃣ Fit the content so the new series is rendered properly
+
+
+      // 5️⃣ Fit the content so the new series is rendered properly
       try {
         chartRef.current.timeScale().fitContent();
       } catch (e) {
@@ -1628,7 +2366,7 @@ const TradingChartDashboard = ({
       // Update selection statistics after full rebuild
       updateSelectionStats();
 
-      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${allMarkers.length}`);
+      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${allMarkers.length}, FVG boxes: ${fvgBoxes.length}`);
 
     } catch (error) {
       console.error('❌ Error updating chart highlights:', error);
@@ -1755,17 +2493,22 @@ const TradingChartDashboard = ({
       console.log('🔄 Chart data loaded, applying existing selections...');
       setTimeout(() => {
         updateChartHighlights();
-      }, 150);
+      }, 200);
     }
   }, [chartData]);
 
   // Listen for TJR label updates
   useEffect(() => {
+    let updateTimeout;
     const handleChartUpdate = () => {
       console.log('🔄 TJR labels updated, refreshing chart highlights...');
-      setTimeout(() => {
+      // Clear any pending update to debounce
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
+      updateTimeout = setTimeout(() => {
         updateChartHighlights();
-      }, 50);
+      }, 100);
     };
 
     document.addEventListener('updateChartHighlights', handleChartUpdate);
@@ -2229,6 +2972,45 @@ const TradingChartDashboard = ({
       // Store price series reference for highlighting
       priceSeriesRef.current = priceSeries;
 
+      // Initialize FVG primitive
+      console.log('🟢 Creating new FVG primitive...');
+      fvgPrimitiveRef.current = new FVGBoxPrimitive();
+      
+      // Store chart and series references in the primitive before attaching
+      fvgPrimitiveRef.current._chart = chart;
+      fvgPrimitiveRef.current._series = priceSeries;
+      
+      // Give the primitive access to persistent storage
+      fvgPrimitiveRef.current._persistentStorage = persistentFvgDataRef;
+      
+      // Give the primitive access to fresh refs
+      fvgPrimitiveRef.current._chartRef = chartRef;
+      fvgPrimitiveRef.current._seriesRef = priceSeriesRef;
+      
+      console.log('🟢 Stored fresh chart and series references in primitive');
+      
+      const pane = chart.panes()[0];
+      console.log('🟢 Got pane:', !!pane);
+      
+      pane.attachPrimitive(fvgPrimitiveRef.current);
+      console.log('🟢 FVG primitive attached to chart with references');
+      
+      // Set a simple requestUpdate that doesn't cause infinite loops
+      fvgPrimitiveRef.current._requestUpdate = () => {
+        console.log('🟢 Manual requestUpdate called');
+        // Don't trigger chart updates - let the primitive draw naturally
+      };
+      
+      // Let the chart settle, then test coordinate conversion
+      setTimeout(() => {
+        if (fvgPrimitiveRef.current && fvgPrimitiveRef.current._series) {
+          console.log('🟢 Testing coordinate conversion after chart is ready...');
+          const testPrice = 605.0;
+          const testCoord = fvgPrimitiveRef.current._series.priceToCoordinate(testPrice);
+          console.log(`🟢 Post-settle coordinate for price ${testPrice}: ${testCoord}`);
+        }
+      }, 200);
+
       // Auto-fit content
       chart.timeScale().fitContent();
 
@@ -2260,6 +3042,18 @@ const TradingChartDashboard = ({
       // Cleanup function
       return () => {
         window.removeEventListener('resize', handleResize);
+        
+        // Detach FVG primitive before removing chart
+        try {
+          if (fvgPrimitiveRef.current && chart.panes()[0]) {
+            chart.panes()[0].detachPrimitive(fvgPrimitiveRef.current);
+            fvgPrimitiveRef.current = null;
+            console.log('🟢 FVG primitive detached');
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not detach FVG primitive:', error);
+        }
+        
         try {
           chart.remove();
         } catch (error) {
@@ -3385,6 +4179,16 @@ const TradingChartDashboard = ({
         chartRef={chartRef}
         priceSeriesRef={priceSeriesRef}
         chartDataRef={chartDataRef}
+      />
+
+      {/* FVG Labels Toggle Controls */}
+      <FvgLabelsControl 
+        isDarkMode={isDarkMode} 
+        chartRef={chartRef}
+        priceSeriesRef={priceSeriesRef}
+        chartDataRef={chartDataRef}
+        persistentFvgDataRef={persistentFvgDataRef}
+        fvgPrimitiveRef={fvgPrimitiveRef}
       />
 
       {/* Selected Candles Panel */}
