@@ -5,6 +5,7 @@ import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
 import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
+import GameModeController from './Game.jsx';
 
 // FVG Box Primitive for drawing rectangular boxes around Fair Value Gaps
 class FVGBoxPrimitive {
@@ -1891,6 +1892,8 @@ const TradingChartDashboard = ({
   const [correlatedCandles, setCorrelatedCandles] = useState([]);
   const [hasSequentialSelection, setHasSequentialSelection] = useState(false);
   const [showBreakdownOverlay, setShowBreakdownOverlay] = useState(true);
+  // Indicates when main chart finished rendering
+  const [chartReady, setChartReady] = useState(false);
   
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -2850,7 +2853,7 @@ const TradingChartDashboard = ({
     // Clear any existing chart
     if (chartRef.current) {
       console.log('🧹 Cleaning up existing chart');
-      
+      setChartReady(false);
       chartRef.current.remove();
       chartRef.current = null;
       priceSeriesRef.current = null;
@@ -2908,6 +2911,7 @@ const TradingChartDashboard = ({
       });
 
       chartRef.current = chart;
+      setTimeout(() => setChartReady(true), 0);
       timeScaleRef.current = chart.timeScale();
 
       // Get selected candles for current symbol/timeframe for highlighting
@@ -3522,6 +3526,10 @@ const TradingChartDashboard = ({
             <h3 className={`text-lg font-semibold ${
               isDarkMode ? 'text-white' : 'text-gray-900'
             }`}>Price Chart</h3>
+            {/* Game mode toggle button */}
+            {chartReady && (
+              <GameModeController chartRef={chartRef} containerRef={chartContainerRef} isDarkMode={isDarkMode} />
+            )}
             <InfoTooltip id="price-chart" content={
               <div>
                 <p className="font-semibold mb-2">📈 Interactive Price Chart</p>
