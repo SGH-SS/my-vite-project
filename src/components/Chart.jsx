@@ -94,12 +94,6 @@ class FVGBoxPrimitive {
       return;
     }
     
-    // Draw test rectangle to confirm primitive works
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 0, 255, 0.8)'; // Bright magenta
-    ctx.fillRect(100, 100, 200, 100);
-    ctx.restore();
-    
     // Draw actual FVG boxes
     if (!this._fvgBoxes || this._fvgBoxes.length === 0) {
       return;
@@ -3420,6 +3414,33 @@ const TradingChartDashboard = ({
     setSelectionModeType('time');
   };
 
+  const [iconsReady, setIconsReady] = useState(false);
+
+  // Wait for both green 'Available' icons to appear in the DOM
+  useEffect(() => {
+    setIconsReady(false);
+    const checkIcons = () => {
+      const tjrIcon = Array.from(document.querySelectorAll('span.bg-green-100.text-green-800')).find(
+        el => el.textContent && el.textContent.includes('Available') && el.closest('h3')?.textContent?.includes('TJR')
+      );
+      const fvgIcon = Array.from(document.querySelectorAll('span.bg-green-100.text-green-800')).find(
+        el => el.textContent && el.textContent.includes('Available') && el.closest('h3')?.textContent?.includes('FVG')
+      );
+      if (tjrIcon && fvgIcon) {
+        setIconsReady(true);
+        return true;
+      }
+      return false;
+    };
+    // Poll for icons every 200ms until both are present
+    const interval = setInterval(() => {
+      if (checkIcons()) clearInterval(interval);
+    }, 200);
+    // Also check immediately in case already present
+    checkIcons();
+    return () => clearInterval(interval);
+  }, [tables, isDarkMode]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -3518,7 +3539,29 @@ const TradingChartDashboard = ({
       {/* Chart Container */}
       <div className={`rounded-lg shadow-md transition-colors duration-200 ${
         isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
+      }`} style={{ position: 'relative' }}>
+        {/* LOADING OVERLAY for chart+game icon */}
+        {!iconsReady && (
+          <div style={{
+            position: 'absolute',
+            zIndex: 50,
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: isDarkMode ? 'rgba(17,24,39,0.85)' : 'rgba(255,255,255,0.85)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'all',
+            borderRadius: 'inherit',
+          }}>
+            <div className={`animate-spin rounded-full h-16 w-16 border-b-4 ${isDarkMode ? 'border-blue-400' : 'border-blue-600'}`}></div>
+            <span className={`mt-4 text-lg font-semibold ${isDarkMode ? 'text-blue-200' : 'text-blue-700'}`}>Loading chart & game...</span>
+            <span className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Waiting for TJR & FVG data availability</span>
+          </div>
+        )}
         <div className={`px-6 py-4 border-b flex items-center justify-between transition-colors duration-200 ${
           isDarkMode ? 'border-gray-700' : 'border-gray-200'
         }`}>
