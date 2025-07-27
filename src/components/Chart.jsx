@@ -7,250 +7,7 @@ import { FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import GameModeController from './Game.jsx';
 
-// FVG Box Primitive for drawing rectangular boxes around Fair Value Gaps
-class FVGBoxPrimitive {
-  constructor() {
-    this._fvgBoxes = [];
-    this._requestUpdate = null;
-    this._chart = null;
-    this._series = null;
-    console.log('🟢 FVGBoxPrimitive constructed');
-  }
-
-  attached(param) {
-    console.log('🟢 FVG Primitive attached() called');
-    this._requestUpdate = param.requestUpdate;
-    
-    console.log('🟢 Chart ref available:', !!this._chart, 'Series ref available:', !!this._series);
-    console.log('🟢 Current FVG boxes on attach:', this._fvgBoxes?.length || 0);
-    
-    // Test coordinate conversion on attach
-    if (this._chart && this._series) {
-      console.log('🟢 Testing coordinate conversion on attach...');
-      const testPrice = 605.0;
-      const testCoord = this._series.priceToCoordinate(testPrice);
-      console.log(`🟢 Test coordinate for price ${testPrice}: ${testCoord}`);
-    }
-    
-    // If we have no boxes but persistent storage does, restore them
-    if ((!this._fvgBoxes || this._fvgBoxes.length === 0) && 
-        this._persistentStorage?.current?.boxes?.length > 0) {
-      console.log('🔄 Restoring', this._persistentStorage.current.boxes.length, 'FVG boxes from persistent storage');
-      this._fvgBoxes = [...this._persistentStorage.current.boxes];
-      this.updateAllViews();
-    }
-  }
-
-  detached() {
-    console.log('🟢 FVG Primitive detached() called');
-    console.log('🟢 Had', this._fvgBoxes?.length || 0, 'FVG boxes when detached');
-    this._requestUpdate = null;
-    this._chart = null;
-    this._series = null;
-    // DON'T clear _fvgBoxes - keep them for reattachment
-  }
-
-  updateAllViews() {
-    // Primitive updates naturally - no logging spam
-    if (this._requestUpdate) {
-      this._requestUpdate();
-    }
-  }
-
-  updateFVGBoxes(fvgData) {
-    this._fvgBoxes = fvgData || [];
-    console.log(`📦 FVG primitive updated with ${this._fvgBoxes.length} boxes`);
-    
-    if (this._requestUpdate) {
-      this._requestUpdate();
-    }
-    
-    // Trigger a visual update
-    this.updateAllViews();
-  }
-
-  paneViews() {
-    return [
-      {
-        renderer: () => {
-          return {
-            draw: (target) => {
-              this._drawFVGBoxes(target);
-            }
-          };
-        }
-      }
-    ];
-  }
-
-  _drawFVGBoxes(target) {
-    // Get the canvas context 
-    let ctx = target.canvasRenderingContext2D;
-    if (!ctx) {
-      ctx = target._context;
-    }
-    
-    if (!ctx) {
-      return;
-    }
-    
-    // Draw actual FVG boxes
-    if (!this._fvgBoxes || this._fvgBoxes.length === 0) {
-      return;
-    }
-    
-    // Get fresh chart and series references from component refs
-    const freshChart = this._chartRef?.current;
-    const freshSeries = this._seriesRef?.current;
-    
-    console.log(`🔥 Fresh references: chart=${!!freshChart}, series=${!!freshSeries}`);
-    
-    if (!freshChart || !freshSeries) {
-      console.log(`🔥 No fresh references available, using stored ones`);
-      if (!this._chart || !this._series) {
-        console.log(`🔥 No chart/series refs available at all`);
-        return;
-      }
-    } else {
-      // Update our stored references with fresh ones
-      this._chart = freshChart;
-      this._series = freshSeries;
-      console.log(`🔥 Updated primitive with fresh chart and series references`);
-      
-      // Test coordinate conversion with fresh references
-      const testCoord = this._series.priceToCoordinate(605.0);
-      console.log(`🔥 Fresh reference coordinate test for 605.0: ${testCoord}`);
-    }
-    
-    console.log('🔥 Drawing', this._fvgBoxes.length, 'FVG boxes');
-    
-    if (!this._chart || !this._series) {
-      console.log('🔥 Missing chart/series refs');
-      return;
-    }
-    
-    ctx.save();
-    
-    this._fvgBoxes.forEach((fvgBox, index) => {
-      try {
-        const { candles, label } = fvgBox;
-        
-        if (!candles || candles.length !== 3) {
-          console.log(`🔥 Invalid candles for box ${index}`);
-          return;
-        }
-        
-        // Sort candles by time
-        const sortedCandles = [...candles].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        
-        // Convert times to coordinates
-        const startTime = Math.floor(new Date(sortedCandles[0].timestamp).getTime() / 1000);
-        const endTime = Math.floor(new Date(sortedCandles[2].timestamp).getTime() / 1000);
-        
-        const x1 = this._chart.timeScale().timeToCoordinate(startTime);
-        const x2 = this._chart.timeScale().timeToCoordinate(endTime);
-        
-        if (x1 === null || x2 === null) {
-          console.log(`🔥 Time coordinates not available for box ${index}`);
-          return;
-        }
-        
-        // Calculate FVG gap prices
-        let gapHigh, gapLow;
-        if (label.label === 'fvg_green') {
-          gapHigh = parseFloat(sortedCandles[2].low);
-          gapLow = parseFloat(sortedCandles[0].high);
-        } else {
-          gapHigh = parseFloat(sortedCandles[0].low);
-          gapLow = parseFloat(sortedCandles[2].high);
-        }
-        
-        // Ensure correct order
-        if (gapHigh < gapLow) {
-          [gapHigh, gapLow] = [gapLow, gapHigh];
-        }
-        
-        console.log(`🔥 Trying to convert prices: gapHigh=${gapHigh}, gapLow=${gapLow}`);
-        console.log(`🔥 Series available:`, !!this._series);
-        
-        const y1 = this._series.priceToCoordinate(gapHigh);
-        const y2 = this._series.priceToCoordinate(gapLow);
-        
-        console.log(`🔥 Price coordinates: y1=${y1}, y2=${y2}`);
-        
-        if (y1 === null || y2 === null) {
-          console.log(`🔥 Price coordinates not available for box ${index} - trying visible range...`);
-          
-          // Try using visible prices instead
-          const visibleHigh = Math.max(...sortedCandles.map(c => parseFloat(c.high)));
-          const visibleLow = Math.min(...sortedCandles.map(c => parseFloat(c.low)));
-          
-          console.log(`🔥 Using visible range: high=${visibleHigh}, low=${visibleLow}`);
-          
-          const testY1 = this._series.priceToCoordinate(visibleHigh);
-          const testY2 = this._series.priceToCoordinate(visibleLow);
-          
-          if (testY1 === null || testY2 === null) {
-            console.log(`🔥 Even visible range coordinates not available`);
-            return;
-          }
-          
-          // Use the visible coordinates
-          gapHigh = visibleHigh;
-          gapLow = visibleLow;
-        }
-        
-        // Recalculate coordinates with corrected prices
-        const finalY1 = this._series.priceToCoordinate(gapHigh);
-        const finalY2 = this._series.priceToCoordinate(gapLow);
-        
-        console.log(`🔥 Final coordinates: x1=${x1}, x2=${x2}, finalY1=${finalY1}, finalY2=${finalY2}`);
-        
-        // Final check that all coordinates are valid
-        if (finalY1 === null || finalY2 === null) {
-          console.log(`🔥 Final coordinates still not available for box ${index}`);
-          return;
-        }
-        
-        // Calculate box dimensions
-        const boxX = Math.min(x1, x2) - 20;
-        const boxY = Math.min(finalY1, finalY2);
-        const boxWidth = Math.abs(x2 - x1) + 40;
-        const boxHeight = Math.abs(finalY2 - finalY1);
-        
-        console.log(`🔥 Box dimensions: x=${boxX}, y=${boxY}, width=${boxWidth}, height=${boxHeight}`);
-        
-        // Draw the FVG box
-        const isGreen = label.label === 'fvg_green';
-        const fillColor = isGreen ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-        const borderColor = isGreen ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)';
-        
-        // Fill
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-        
-        // Border
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 4]);
-        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-        
-        // Label
-        ctx.setLineDash([]);
-        ctx.fillStyle = borderColor;
-        ctx.font = '14px Arial';
-        ctx.fillText(isGreen ? 'FVG+' : 'FVG-', boxX + 8, boxY + 20);
-        
-        console.log(`🔥 ✅ Successfully drew FVG box ${index}: ${label.label} at (${boxX},${boxY}) ${boxWidth}x${boxHeight}`);
-        
-      } catch (error) {
-        console.error(`🔥 Error drawing FVG box ${index}:`, error);
-      }
-    });
-    
-    ctx.restore();
-  }
-}
+// FVG markers are now handled via series markers for proper layering and positioning
 
 // Reusable InfoTooltip component (shared across dashboards)
 const InfoTooltip = ({ id, content, isDarkMode, asSpan = false }) => {
@@ -818,7 +575,7 @@ const DataSelectionControls = ({
 };
 
 // --- TJR LABELS CONTROL ---
-const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }) => {
+const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, gameMode, isSelectionMode }) => {
   const [showTjrHighs, setShowTjrHighs] = useState(false);
   const [showTjrLows, setShowTjrLows] = useState(false);
   // Swing toggles
@@ -1095,13 +852,15 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
     const updateEvent = new CustomEvent('updateChartHighlights');
     document.dispatchEvent(updateEvent);
     
-    // Fit content
-    try { 
-      chartRef.current.timeScale().fitContent(); 
-    } catch (e) {
-      console.warn('Could not fit content:', e);
+    // Fit content - but not in game mode or selection mode to avoid conflicts
+    if (!gameMode && !isSelectionMode) {
+      try { 
+        chartRef.current.timeScale().fitContent(); 
+      } catch (e) {
+        console.warn('Could not fit content:', e);
+      }
     }
-  }, [showTjrHighs, showTjrLows, showSwingHighs, showSwingLows, matchingLabels, matchingSwingLabels, chartRef?.current, priceSeriesRef?.current]);
+  }, [showTjrHighs, showTjrLows, showSwingHighs, showSwingLows, matchingLabels, matchingSwingLabels, chartRef?.current, priceSeriesRef?.current, gameMode, isSelectionMode]);
 
 
 
@@ -1416,7 +1175,7 @@ const TjrLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef }
   );
 };
 
-const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, persistentFvgDataRef, fvgPrimitiveRef }) => {
+const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, persistentFvgDataRef, gameMode, isSelectionMode }) => {
   const [showFvgGreens, setShowFvgGreens] = useState(false);
   const [showFvgReds, setShowFvgReds] = useState(false);
   const [fvgLabelsData, setFvgLabelsData] = useState(null);
@@ -1609,13 +1368,15 @@ const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, 
     const updateEvent = new CustomEvent('updateChartHighlights');
     document.dispatchEvent(updateEvent);
     
-    // Fit content
-    try { 
-      chartRef.current.timeScale().fitContent(); 
-    } catch (e) {
-      console.warn('Could not fit content:', e);
+    // Fit content - but not in game mode or selection mode to avoid conflicts
+    if (!gameMode && !isSelectionMode) {
+      try { 
+        chartRef.current.timeScale().fitContent(); 
+      } catch (e) {
+        console.warn('Could not fit content:', e);
+      }
     }
-  }, [showFvgGreens, showFvgReds, matchingFvgLabels, chartRef?.current, priceSeriesRef?.current]);
+  }, [showFvgGreens, showFvgReds, matchingFvgLabels, chartRef?.current, priceSeriesRef?.current, gameMode, isSelectionMode]);
 
   return (
     <div 
@@ -1674,10 +1435,6 @@ const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, 
                   setShowFvgGreens(newValue);
                   persistentFvgDataRef.current.enabled.green = newValue;
                   console.log('🟢 FVG Green toggled to:', newValue);
-                  
-                  // Trigger full reprocessing to include both red and green
-                  console.log('🟢 Triggering full FVG reprocessing...');
-                  debouncedUpdateChartHighlights();
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   showFvgGreens
@@ -1713,10 +1470,6 @@ const FvgLabelsControl = ({ isDarkMode, chartRef, priceSeriesRef, chartDataRef, 
                   setShowFvgReds(newValue);
                   persistentFvgDataRef.current.enabled.red = newValue;
                   console.log('🔴 FVG Red toggled to:', newValue);
-                  
-                  // Trigger full reprocessing to include both red and green
-                  console.log('🔴 Triggering full FVG reprocessing...');
-                  debouncedUpdateChartHighlights();
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   showFvgReds
@@ -1868,8 +1621,6 @@ const TradingChartDashboard = ({
   
   // Enhanced selection states
   const [hoveredCandle, setHoveredCandle] = useState(null);
-  const [selectionModeType, setSelectionModeType] = useState('click'); // click, range, multi, time
-  const [rangeStartIndex, setRangeStartIndex] = useState(null);
   const [selectionStats, setSelectionStats] = useState(null);
   
   // Crosshair state for selection mode
@@ -1888,6 +1639,7 @@ const TradingChartDashboard = ({
   const [showBreakdownOverlay, setShowBreakdownOverlay] = useState(true);
   // Indicates when main chart finished rendering
   const [chartReady, setChartReady] = useState(false);
+  const [gameMode, setGameMode] = useState(false);
   
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -1895,7 +1647,7 @@ const TradingChartDashboard = ({
   const priceSeriesRef = useRef(null);
   const chartDataRef = useRef(null); // Store original chart data
   const timeScaleRef = useRef(null); // Store timescale reference
-  const fvgPrimitiveRef = useRef(null); // Store FVG primitive reference
+  // FVG markers are now handled via series markers, no primitive ref needed
   const persistentFvgDataRef = useRef({ boxes: [], enabled: { red: false, green: false } }); // Persistent FVG data
   
   // Secondary chart refs
@@ -2187,8 +1939,8 @@ const TradingChartDashboard = ({
       // --- Build the combined marker array (TJR and swing markers) ---
       const allMarkers = [];
       
-      // Update FVG boxes via primitive instead of markers
-      const fvgBoxes = [];
+      // Convert FVG boxes to series markers for proper layering
+      const fvgMarkers = [];
       
       // Check persistent state first - use it if toggles are enabled
       const shouldShowReds = persistentFvgDataRef.current.enabled.red && fvgState.showFvgReds;
@@ -2205,8 +1957,7 @@ const TradingChartDashboard = ({
         persistentBoxes: persistentFvgDataRef.current.boxes?.length
       });
       
-      // Use persistent boxes if they exist and toggles are on
-      // Always reprocess FVG data when toggles are on (don't rely on persistent cache)
+      // Process FVG data and convert to markers
       if (fvgState.showFvgGreens || fvgState.showFvgReds) {
         console.log(`🔄 Processing FVG data: ${fvgState.matchingFvgLabels?.length || 0} FVG groups, showGreens: ${fvgState.showFvgGreens}, showReds: ${fvgState.showFvgReds}`);
         if (fvgState.matchingFvgLabels && Array.isArray(fvgState.matchingFvgLabels)) {
@@ -2223,32 +1974,81 @@ const TradingChartDashboard = ({
             }
             
             if (candles && candles.length === 3) {
-              // Prepare simplified box data for the primitive
-              const boxData = {
-                candles: candles,
-                label: label
-              };
-              fvgBoxes.push(boxData);
+              // Sort candles by time
+              const sortedCandles = [...candles].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
               
-              console.log(`✅ Added ${label.label} FVG box for candles: ${candles.map(c => c.timestamp).join(', ')}`);
+              // Calculate FVG gap prices
+              let gapHigh, gapLow;
+              if (label.label === 'fvg_green') {
+                // For bullish FVG: gap between candle 1 high and candle 3 low
+                gapHigh = parseFloat(sortedCandles[2].low);
+                gapLow = parseFloat(sortedCandles[0].high);
+              } else {
+                // For bearish FVG: gap between candle 1 low and candle 3 high  
+                gapHigh = parseFloat(sortedCandles[0].low);
+                gapLow = parseFloat(sortedCandles[2].high);
+              }
+              
+              // Ensure correct order (high should be higher than low)
+              if (gapHigh < gapLow) {
+                [gapHigh, gapLow] = [gapLow, gapHigh];
+              }
+              
+              // Create markers for the FVG gap
+              const startTime = Math.floor(new Date(sortedCandles[0].timestamp).getTime() / 1000);
+              const endTime = Math.floor(new Date(sortedCandles[2].timestamp).getTime() / 1000);
+              const midTime = Math.floor((startTime + endTime) / 2);
+              const midPrice = (gapHigh + gapLow) / 2;
+              
+              const isGreen = label.label === 'fvg_green';
+              const markerColor = isGreen ? '#22c55e' : '#ef4444';
+              const markerText = isGreen ? 'FVG+' : 'FVG-';
+              
+              // Add marker at the middle of the gap
+              fvgMarkers.push({
+                time: midTime,
+                position: 'inBar',
+                color: markerColor,
+                shape: 'square',
+                size: 2,
+                text: markerText
+              });
+              
+              // Add additional markers to outline the gap
+              fvgMarkers.push({
+                time: startTime,
+                position: 'inBar',
+                color: markerColor,
+                shape: 'circle',
+                size: 1,
+                text: ''
+              });
+              
+              fvgMarkers.push({
+                time: endTime,
+                position: 'inBar',
+                color: markerColor,
+                shape: 'circle',
+                size: 1,
+                text: ''
+              });
+              
+              console.log(`✅ Added ${label.label} FVG markers for candles: ${candles.map(c => c.timestamp).join(', ')}`);
             }
           });
         }
       }
       
-      // Store the boxes in persistent storage for future chart updates
-      if (fvgBoxes.length > 0) {
-        persistentFvgDataRef.current.boxes = fvgBoxes;
-        const redCount = fvgBoxes.filter(box => box.label.label === 'fvg_red').length;
-        const greenCount = fvgBoxes.filter(box => box.label.label === 'fvg_green').length;
-        console.log(`💾 Stored ${fvgBoxes.length} FVG boxes: ${redCount} red, ${greenCount} green`);
+      // Store the markers in persistent storage for future chart updates
+      if (fvgMarkers.length > 0) {
+        persistentFvgDataRef.current.fvgMarkers = fvgMarkers;
+        const redCount = fvgMarkers.filter(marker => marker.color === '#ef4444').length;
+        const greenCount = fvgMarkers.filter(marker => marker.color === '#22c55e').length;
+        console.log(`💾 Stored ${fvgMarkers.length} FVG markers: ${redCount} red, ${greenCount} green`);
       }
       
-      // Update FVG primitive with new boxes
-      if (fvgPrimitiveRef.current) {
-        fvgPrimitiveRef.current.updateFVGBoxes(fvgBoxes);
-        console.log(`🟢 Updated FVG primitive with ${fvgBoxes.length} boxes`);
-      }
+      // Add FVG markers to allMarkers array
+      allMarkers.push(...fvgMarkers);
       
       // Build TJR markers
       if (tjrState.showTjrHighs || tjrState.showTjrLows) {
@@ -2345,7 +2145,7 @@ const TradingChartDashboard = ({
         createSeriesMarkers(priceSeriesRef.current, allMarkers);
         const tjrCount = allMarkers.filter(m => m.text === 'T' || m.text === '⊥').length;
         const swingCount = allMarkers.filter(m => m.text === '▲' || m.text === '▼').length;
-        console.log(`✅ Applied ${allMarkers.length} total markers (${tjrCount} TJR + ${swingCount} swing) + ${fvgBoxes.length} FVG boxes`);
+        console.log(`✅ Applied ${allMarkers.length} total markers (${tjrCount} TJR + ${swingCount} swing) + ${fvgMarkers.length} FVG markers`);
       } else {
         createSeriesMarkers(priceSeriesRef.current, []);
         console.log('📝 No markers to display – cleared all markers');
@@ -2353,23 +2153,25 @@ const TradingChartDashboard = ({
 
 
 
-      // 5️⃣ Fit the content so the new series is rendered properly
-      try {
-        chartRef.current.timeScale().fitContent();
-      } catch (e) {
-        console.warn('⚠️ Could not fit content after series rebuild:', e);
+      // 5️⃣ Fit the content so the new series is rendered properly - but not in game mode or selection mode
+      if (!gameMode && !isSelectionMode) {
+        try {
+          chartRef.current.timeScale().fitContent();
+        } catch (e) {
+          console.warn('⚠️ Could not fit content after series rebuild:', e);
+        }
       }
 
       // Update selection statistics after full rebuild
       updateSelectionStats();
 
-      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${allMarkers.length}, FVG boxes: ${fvgBoxes.length}`);
+      console.log(`🔄 Series rebuilt & markers updated. Current markers: ${allMarkers.length}, FVG markers: ${fvgMarkers.length}`);
 
     } catch (error) {
       console.error('❌ Error updating chart highlights:', error);
       console.error('Error details:', error.stack);
     }
-  }, [selectedCandles, selectedSymbol, selectedTimeframe, chartType, updateSelectionStats]);
+  }, [selectedCandles, selectedSymbol, selectedTimeframe, chartType, updateSelectionStats, gameMode, isSelectionMode]);
 
   useEffect(() => {
     if (selectedSymbol && selectedTimeframe) {
@@ -2802,8 +2604,10 @@ const TradingChartDashboard = ({
       priceSeries.setData(candlestickData);
       secondaryPriceSeriesRef.current = priceSeries;
 
-      // Fit content to show all data
-      chart.timeScale().fitContent();
+      // Fit content to show all data - but not in game mode or selection mode
+      if (!gameMode && !isSelectionMode) {
+        chart.timeScale().fitContent();
+      }
 
       console.log('✅ Secondary chart initialized successfully');
 
@@ -2970,47 +2774,13 @@ const TradingChartDashboard = ({
       // Store price series reference for highlighting
       priceSeriesRef.current = priceSeries;
 
-      // Initialize FVG primitive
-      console.log('🟢 Creating new FVG primitive...');
-      fvgPrimitiveRef.current = new FVGBoxPrimitive();
-      
-      // Store chart and series references in the primitive before attaching
-      fvgPrimitiveRef.current._chart = chart;
-      fvgPrimitiveRef.current._series = priceSeries;
-      
-      // Give the primitive access to persistent storage
-      fvgPrimitiveRef.current._persistentStorage = persistentFvgDataRef;
-      
-      // Give the primitive access to fresh refs
-      fvgPrimitiveRef.current._chartRef = chartRef;
-      fvgPrimitiveRef.current._seriesRef = priceSeriesRef;
-      
-      console.log('🟢 Stored fresh chart and series references in primitive');
-      
-      const pane = chart.panes()[0];
-      console.log('🟢 Got pane:', !!pane);
-      
-      pane.attachPrimitive(fvgPrimitiveRef.current);
-      console.log('🟢 FVG primitive attached to chart with references');
-      
-      // Set a simple requestUpdate that doesn't cause infinite loops
-      fvgPrimitiveRef.current._requestUpdate = () => {
-        console.log('🟢 Manual requestUpdate called');
-        // Don't trigger chart updates - let the primitive draw naturally
-      };
-      
-      // Let the chart settle, then test coordinate conversion
-      setTimeout(() => {
-        if (fvgPrimitiveRef.current && fvgPrimitiveRef.current._series) {
-          console.log('🟢 Testing coordinate conversion after chart is ready...');
-          const testPrice = 605.0;
-          const testCoord = fvgPrimitiveRef.current._series.priceToCoordinate(testPrice);
-          console.log(`🟢 Post-settle coordinate for price ${testPrice}: ${testCoord}`);
-        }
-      }, 200);
+      // FVG markers are now handled via series markers instead of custom primitive
+      console.log('🟢 FVG markers will be handled via series markers for proper layering');
 
-      // Auto-fit content
-      chart.timeScale().fitContent();
+      // Auto-fit content - but not in game mode or selection mode to avoid conflicts
+      if (!gameMode && !isSelectionMode) {
+        chart.timeScale().fitContent();
+      }
 
       // Update selection statistics
       updateSelectionStats();
@@ -3041,16 +2811,7 @@ const TradingChartDashboard = ({
       return () => {
         window.removeEventListener('resize', handleResize);
         
-        // Detach FVG primitive before removing chart
-        try {
-          if (fvgPrimitiveRef.current && chart.panes()[0]) {
-            chart.panes()[0].detachPrimitive(fvgPrimitiveRef.current);
-            fvgPrimitiveRef.current = null;
-            console.log('🟢 FVG primitive detached');
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not detach FVG primitive:', error);
-        }
+        // FVG markers are now handled via series markers, no cleanup needed
         
         try {
           chart.remove();
@@ -3113,7 +2874,6 @@ const TradingChartDashboard = ({
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
-    setRangeStartIndex(null);
     setHoveredCandle(null);
     
     // Reset crosshair state when exiting selection mode
@@ -3121,50 +2881,10 @@ const TradingChartDashboard = ({
       setShowCustomCrosshair(false);
       setCrosshairPosition(null);
     }
-    
-    // Reset to default selection mode
-    if (!isSelectionMode) {
-      setSelectionModeType('click');
-    }
-  };
-  
-  const handleRangeSelection = (endIndex, endX) => {
-    if (rangeStartIndex === null) {
-      // First click - set range start
-      setRangeStartIndex(endIndex);
-    } else {
-      // Second click - select range
-      const startIdx = Math.min(rangeStartIndex, endIndex);
-      const endIdx = Math.max(rangeStartIndex, endIndex);
-      
-      for (let i = startIdx; i <= endIdx; i++) {
-        if (i >= 0 && i < chartData.data.length) {
-          const candle = chartData.data[i];
-          const candleId = `${selectedSymbol}_${selectedTimeframe}_${candle.timestamp}`;
-          
-          // Only add if not already selected
-          if (!selectedCandles.some(c => c.id === candleId)) {
-            selectCandle(candle, i);
-          }
-        }
-      }
-      
-      setRangeStartIndex(null);
-    }
   };
   
   const handleKeyDown = (e) => {
     if (!isSelectionMode) return;
-    
-    // Shift key - switch to range selection mode
-    if (e.shiftKey && selectionModeType !== 'range') {
-      setSelectionModeType('range');
-    }
-    
-    // Ctrl/Cmd key - switch to multi-select mode
-    if ((e.ctrlKey || e.metaKey) && selectionModeType !== 'multi') {
-      setSelectionModeType('multi');
-    }
     
     // Escape key - exit selection mode
     if (e.key === 'Escape') {
@@ -3181,27 +2901,16 @@ const TradingChartDashboard = ({
     }
   };
   
-  const handleKeyUp = (e) => {
-    if (!isSelectionMode) return;
-    
-    // Return to default click mode when modifier keys are released
-    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      setSelectionModeType('click');
-    }
-  };
-  
   // Add keyboard event listeners
   useEffect(() => {
     if (isSelectionMode) {
       window.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('keyup', handleKeyUp);
       
       return () => {
         window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
       };
     }
-  }, [isSelectionMode, selectionModeType]);
+  }, [isSelectionMode]);
 
   const getCandleFromPosition = (x, containerRect) => {
     if (!chartData?.data || !chartRef.current || !timeScaleRef.current) return null;
@@ -3237,9 +2946,9 @@ const TradingChartDashboard = ({
     // Check if already selected
     const isSelected = selectedCandles.some(c => c.id === candleId);
     
-    if (isSelected && selectionModeType !== 'multi') {
+    if (isSelected) {
       removeSelectedCandle(candleId);
-    } else if (!isSelected) {
+    } else {
       const candleWithMetadata = {
         id: candleId,
         symbol: selectedSymbol,
@@ -3341,11 +3050,7 @@ const TradingChartDashboard = ({
       // Single click - select individual candle
       const candleData = getCandleFromPosition(e.clientX, containerRect);
       if (candleData) {
-        if (selectionModeType === 'range') {
-          handleRangeSelection(candleData.index, e.clientX);
-        } else {
-          selectCandle(candleData.candle, candleData.index);
-        }
+        selectCandle(candleData.candle, candleData.index);
       }
     } else {
       // Drag selection - select range of candles
@@ -3410,8 +3115,7 @@ const TradingChartDashboard = ({
       }
     });
     
-    // Update mode type to indicate time selection
-    setSelectionModeType('time');
+
   };
 
   const [iconsReady, setIconsReady] = useState(false);
@@ -3440,6 +3144,27 @@ const TradingChartDashboard = ({
     checkIcons();
     return () => clearInterval(interval);
   }, [tables, isDarkMode]);
+
+  // Check if game mode is active by monitoring the container style
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+    
+    const observer = new MutationObserver(() => {
+      const container = chartContainerRef.current;
+      if (container) {
+        const isGameMode = container.style.position === 'fixed' && 
+                          container.style.zIndex === '10000';
+        setGameMode(isGameMode);
+      }
+    });
+    
+    observer.observe(chartContainerRef.current, {
+      attributes: true,
+      attributeFilter: ['style']
+    });
+    
+    return () => observer.disconnect();
+  }, [chartContainerRef.current]);
 
   if (loading) {
     return (
@@ -3814,25 +3539,17 @@ const TradingChartDashboard = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
                     <span className="text-lg mr-2">🎯</span>
-                    <span className="font-medium">Selection Mode: {selectionModeType.toUpperCase()}</span>
+                    <span className="font-medium">Selection Mode: CLICK</span>
                   </div>
                   <div className="flex gap-2 text-xs">
-                    <span className={`px-2 py-1 rounded ${selectionModeType === 'click' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                    <span className="px-2 py-1 rounded bg-blue-600 text-white">
                       Click
-                    </span>
-                    <span className={`px-2 py-1 rounded ${selectionModeType === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
-                      Range (Shift)
-                    </span>
-                    <span className={`px-2 py-1 rounded ${selectionModeType === 'multi' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
-                      Multi (Ctrl)
                     </span>
                   </div>
                 </div>
                 <div className="text-sm grid grid-cols-2 gap-2">
                   <div>
                     <p>• <strong>Click:</strong> Select/deselect individual candles</p>
-                    <p>• <strong>Shift+Click:</strong> Select range between two points</p>
-                    <p>• <strong>Ctrl+Click:</strong> Add to selection</p>
                   </div>
                   <div>
                     <p>• <strong>Delete:</strong> Clear current selection</p>
@@ -3890,7 +3607,8 @@ const TradingChartDashboard = ({
             {/* Chart is rendered programmatically via lightweight-charts */}
             
             {/* Selection Overlay */}
-            {isSelectionMode && (
+            {/* Selection Overlay - disabled in game mode to avoid conflicts */}
+            {isSelectionMode && !gameMode && (
               <div
                 ref={selectionOverlayRef}
                 className="absolute inset-0 z-20"
@@ -3984,9 +3702,7 @@ const TradingChartDashboard = ({
                     ? 'bg-blue-900/80 text-blue-200 border border-blue-600' 
                     : 'bg-blue-100/80 text-blue-700 border border-blue-300'
                 }`}>
-                  🎯 {selectionModeType === 'range' && rangeStartIndex !== null 
-                    ? 'Click to complete range' 
-                    : `${selectionModeType.charAt(0).toUpperCase() + selectionModeType.slice(1)} Mode`}
+                  🎯 Click Mode
                 </div>
                 
                 {/* Instructions */}
@@ -4230,17 +3946,20 @@ const TradingChartDashboard = ({
         chartRef={chartRef}
         priceSeriesRef={priceSeriesRef}
         chartDataRef={chartDataRef}
+        gameMode={gameMode}
+        isSelectionMode={isSelectionMode}
       />
 
       {/* FVG Labels Toggle Controls */}
-      <FvgLabelsControl 
-        isDarkMode={isDarkMode} 
-        chartRef={chartRef}
-        priceSeriesRef={priceSeriesRef}
-        chartDataRef={chartDataRef}
-        persistentFvgDataRef={persistentFvgDataRef}
-        fvgPrimitiveRef={fvgPrimitiveRef}
-      />
+                  <FvgLabelsControl
+              isDarkMode={isDarkMode}
+              chartRef={chartRef}
+              priceSeriesRef={priceSeriesRef}
+              chartDataRef={chartDataRef}
+              persistentFvgDataRef={persistentFvgDataRef}
+              gameMode={gameMode}
+              isSelectionMode={isSelectionMode}
+            />
 
       {/* Selected Candles Panel */}
       <SelectedCandlesPanel 
