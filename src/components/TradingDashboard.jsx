@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import TradingChartDashboard from './Chart.jsx';
+import BacktestDashboard from './backtest.jsx';
 import TradingLLMDashboard from './LLMDashboard.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
@@ -3578,16 +3579,19 @@ const TradingDashboard = () => {
                 </h1>
                 <div className={`ml-4 px-3 py-1 rounded-lg text-sm font-semibold transition-colors duration-200 ${
                   dashboardMode === 'data' ? 
-                    isDarkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700' :
+                    (isDarkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700') :
                   dashboardMode === 'vector' ? 
-                    isDarkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700' :
+                    (isDarkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700') :
                   dashboardMode === 'chart' ? 
-                    isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700' :
-                    isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700'
+                    (isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700') :
+                  dashboardMode === 'backtest' ? 
+                    (isDarkMode ? 'bg-indigo-900/30 text-indigo-300' : 'bg-indigo-100 text-indigo-700') :
+                    (isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700')
                 }`}>
                   {dashboardMode === 'data' ? 'Data Analytics' : 
                    dashboardMode === 'vector' ? 'Vector Intelligence' : 
                    dashboardMode === 'chart' ? 'Chart Analysis' :
+                   dashboardMode === 'backtest' ? 'Backtest Analysis' :
                    'AI Assistant'}
                 </div>
               </div>
@@ -3600,8 +3604,9 @@ const TradingDashboard = () => {
                     ? 'Advanced pattern recognition & ML analysis • AI-powered market insights'
                     : dashboardMode === 'chart'
                     ? 'Interactive charting & technical analysis • Professional trading tools'
-                    : 'Intelligent trading assistant • Natural language market analysis'
-                  }
+                    : dashboardMode === 'backtest'
+                    ? 'Historical replay & strategy evaluation • Candle-by-candle simulation'
+                    : 'Intelligent trading assistant • Natural language market analysis'}
                 </p>
             </div>
             
@@ -3670,6 +3675,21 @@ const TradingDashboard = () => {
                   <span>Chart Dashboard</span>
                 </button>
                 <button
+                  onClick={() => setDashboardMode('backtest')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
+                    dashboardMode === 'backtest'
+                      ? (isDarkMode
+                        ? 'bg-gray-700 text-indigo-400 shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-200')
+                      : (isDarkMode
+                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50')
+                  }`}
+                >
+                  <span>🧪</span>
+                  <span>Backtest Dashboard</span>
+                </button>
+                <button
                   onClick={() => setDashboardMode('llm')}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
                     dashboardMode === 'llm'
@@ -3712,6 +3732,10 @@ const TradingDashboard = () => {
         ) : dashboardMode === 'chart' ? (
           <TradingChartDashboard
             tables={tables}
+            isDarkMode={isDarkMode}
+          />
+        ) : dashboardMode === 'backtest' ? (
+          <BacktestDashboard
             isDarkMode={isDarkMode}
           />
         ) : dashboardMode === 'llm' ? (
