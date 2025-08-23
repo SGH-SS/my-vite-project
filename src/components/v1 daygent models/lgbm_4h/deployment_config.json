@@ -1,0 +1,62 @@
+{
+  "model_type": "LightGBMClassifier",
+  "timeframe": "4h",
+  "feature_contract_version": "v1",
+  "feature_names": [
+    "raw_o",
+    "raw_h",
+    "raw_l",
+    "raw_c",
+    "raw_v",
+    "iso_0",
+    "iso_1",
+    "iso_2",
+    "iso_3",
+    "tf_1d",
+    "tf_4h",
+    "hl_range",
+    "price_change",
+    "upper_shadow",
+    "lower_shadow",
+    "volume_m"
+  ],
+  "calibrated_threshold": 0.3,
+  "artifact_paths": {
+    "model_joblib": "lightgbm_financial_4h_only.joblib",
+    "scaler_joblib": "scaler_4h_only.joblib"
+  },
+  "inference_notes": {
+    "scaling": "StandardScaler fitted on first 80% of pre-test training data",
+    "one_hot": {
+      "tf_1d": 0,
+      "tf_4h": 1
+    },
+    "expected_columns_in_csv": [
+      "timestamp",
+      "raw_ohlcv_vec",
+      "iso_ohlc",
+      "future"
+    ]
+  },
+  "lgbm_params": {
+    "objective": "binary",
+    "boosting_type": "gbdt",
+    "num_leaves": 60,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "n_estimators": 300,
+    "reg_alpha": 0.1,
+    "reg_lambda": 0.1,
+    "min_child_samples": 20,
+    "subsample": 0.8,
+    "colsample_bytree": 0.85,
+    "subsample_freq": 2,
+    "feature_fraction_bynode": 0.9,
+    "extra_trees": true,
+    "class_weight": "balanced",
+    "random_state": 42,
+    "verbose": -1,
+    "device_type": "gpu",
+    "gpu_device_id": 0
+  }
+}

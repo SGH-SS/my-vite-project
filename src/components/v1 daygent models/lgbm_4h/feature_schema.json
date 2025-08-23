@@ -1,0 +1,23 @@
+{
+  "raw_ohlcv_vec": {
+    "desc": "Stringified list of [open, high, low, close, volume]",
+    "len": 5,
+    "dtype": "float"
+  },
+  "iso_ohlc": {
+    "desc": "Stringified list of 4 ISO-normalized OHLC values",
+    "len": 4,
+    "dtype": "float"
+  },
+  "engineered": [
+    "hl_range=(H-L)/C",
+    "price_change=(C-O)/O",
+    "upper_shadow=(H-C)/C",
+    "lower_shadow=(C-L)/C",
+    "volume_m=V/1e6"
+  ],
+  "tf_one_hot": {
+    "tf_1d": 0,
+    "tf_4h": 1
+  }
+}

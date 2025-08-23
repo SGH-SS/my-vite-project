@@ -21,6 +21,8 @@ from models import (
 from pydantic import BaseModel
 from typing import Dict, Any
 from services.trading_service import TradingDataService
+from services.model_inference import model_inference_service
+from services.csv_model_service import csv_model_service
 
 # Shape similarity response models
 class ShapeSimilarityMatrix(BaseModel):
@@ -113,6 +115,76 @@ async def get_trading_data(
         )
     except Exception as e:
         logger.error(f"Error getting trading data for {symbol}_{timeframe}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/predict/{symbol}/{timeframe}", summary="Run model prediction for recent candles")
+async def predict_for_recent(
+    symbol: str,
+    timeframe: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    model: str = Query(default="auto", description="Model name or 'auto'"),
+    train_cutoff: str = Query(default="", description="ISO timestamp of last training candle (optional)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Predict next-direction probabilities for recent candles using preloaded .joblib models.
+
+    - For now supports: SPY 1d (GB), SPY 4h (GB, LightGBM_Financial)
+    - Returns per-candle predictions with probability and confidence plus coverage counts.
+    """
+    try:
+        symbol = symbol.lower()
+        timeframe = timeframe.lower()
+        if symbol != "spy" or timeframe not in ("1d", "4h"):
+            raise HTTPException(status_code=400, detail="Only spy 1d/4h supported for now")
+
+        # Choose default model if auto
+        if model == "auto":
+            if timeframe == "1d":
+                model_name = "GradientBoosting"
+            else:  # 4h
+                model_name = (
+                    "LightGBM_Financial" if model_inference_service.model_available("LightGBM_Financial", "4h")
+                    else "GradientBoosting"
+                )
+        else:
+            model_name = model
+
+        if not model_inference_service.model_available(model_name, timeframe):
+            raise HTTPException(status_code=404, detail=f"Model not available: {model_name} {timeframe}")
+
+        # Pull recent candles from DB in ascending order for feature building
+        data_response = trading_service.get_trading_data(
+            db=db,
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            offset=0,
+            include_vectors=True,
+            order="asc",
+            sort_by="timestamp"
+        )
+
+        rows = [d.dict() for d in data_response.data]
+        results, coverage = model_inference_service.predict_for_rows(
+            model_name=model_name,
+            timeframe=timeframe,
+            rows=rows,
+            train_cutoff=train_cutoff or None
+        )
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "model": model_name,
+            "count": len(results),
+            "coverage": coverage,
+            "predictions": [r.__dict__ for r in results],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running prediction for {symbol}_{timeframe}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/latest/{symbol}/{timeframe}", response_model=TradingDataPoint, summary="Get latest data point")
@@ -335,4 +407,70 @@ async def get_fvg_labels(db: Session = Depends(get_db), symbol: str = None, time
         raise
     except Exception as e:
         logger.error(f"❌ Error in FVG API endpoint for {symbol}{timeframe}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error fetching FVG labels: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error fetching FVG labels: {str(e)}")
+
+@router.get("/model-results/{symbol}/{timeframe}", summary="Get DB-backed model results for symbol/timeframe")
+async def get_model_results(symbol: str, timeframe: str, db: Session = Depends(get_db)):
+    """Return predictions for all available models for symbol/timeframe from v1_models schema.
+
+    Matches on timestamp_utc; frontend will reconcile with candles.
+    """
+    try:
+        symbol = symbol.lower()
+        timeframe = timeframe.lower()
+        return trading_service.get_model_results_for_timeframe(db, symbol, timeframe)
+    except Exception as e:
+        logger.error(f"Error fetching model results for {symbol}_{timeframe}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/csv-models", summary="Get available CSV model predictions")
+async def get_csv_models():
+    """Get list of available CSV-based model predictions with metadata"""
+    try:
+        return csv_model_service.get_available_models()
+    except Exception as e:
+        logger.error(f"Error getting CSV models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/csv-predictions/{symbol}/{timeframe}", summary="Get all CSV model predictions for symbol/timeframe")
+async def get_csv_predictions(symbol: str, timeframe: str):
+    """Get all available CSV model predictions for a specific symbol/timeframe"""
+    try:
+        symbol = symbol.lower()
+        timeframe = timeframe.lower()
+        
+        predictions = csv_model_service.get_predictions_for_timeframe(symbol, timeframe)
+        available_models = csv_model_service.get_models_for_symbol_timeframe(symbol, timeframe)
+        
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "available_models": available_models,
+            "predictions": predictions,
+            "count": len(predictions)
+        }
+    except Exception as e:
+        logger.error(f"Error getting CSV predictions for {symbol}_{timeframe}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/csv-prediction/{model_key}/{timestamp}", summary="Get specific prediction by model and timestamp")
+async def get_csv_prediction_by_timestamp(model_key: str, timestamp: str):
+    """Get a specific prediction from a CSV model by timestamp"""
+    try:
+        # Parse timestamp
+        target_timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        
+        prediction = csv_model_service.get_prediction_for_timestamp(model_key, target_timestamp)
+        
+        if not prediction:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No prediction found for {model_key} at {timestamp}"
+            )
+        
+        return prediction
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid timestamp format: {e}")
+    except Exception as e:
+        logger.error(f"Error getting CSV prediction for {model_key} at {timestamp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) 

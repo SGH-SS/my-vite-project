@@ -20,6 +20,69 @@ class TradingDataService:
     
     def __init__(self):
         self.schema = settings.SCHEMA
+        self.models_schema = getattr(settings, 'MODELS_SCHEMA', 'v1_models')
+
+    # -----------------------------
+    # Model Results (v1_models)
+    # -----------------------------
+    def get_model_results_for_timeframe(
+        self,
+        db: Session,
+        symbol: str,
+        timeframe: str,
+    ) -> Dict[str, Any]:
+        """Return predictions for all available models for a symbol/timeframe from v1_models.
+
+        Tables expected in MODELS_SCHEMA: gb1d, gb4h, lgbm4h.
+        """
+        model_map = {
+            ('spy', '1d'): ['gb1d'],
+            ('spy', '4h'): ['gb4h', 'lgbm4h']
+        }
+
+        tables = model_map.get((symbol, timeframe), [])
+        results: Dict[str, Any] = {
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'models': {},
+        }
+
+        for table in tables:
+            try:
+                query = text(f"""
+                    SELECT candle_index_in_test, timestamp_utc, date_utc, pred_prob_up, pred_label,
+                           true_label, correct, threshold_used, decision_margin
+                    FROM {self.models_schema}.{table}
+                    ORDER BY timestamp_utc
+                """)
+                rows = db.execute(query).fetchall()
+                models_rows = []
+                for r in rows:
+                    models_rows.append({
+                        'candle_index': r[0],
+                        'timestamp': r[1].isoformat() if r[1] else None,
+                        'date_utc': r[2].isoformat() if r[2] else None,
+                        'pred_prob_up': float(r[3]) if r[3] is not None else None,
+                        'pred_label': int(r[4]) if r[4] is not None else None,
+                        'true_label': int(r[5]) if r[5] is not None else None,
+                        'correct': bool(r[6]) if r[6] is not None else None,
+                        'threshold_used': float(r[7]) if r[7] is not None else None,
+                        'decision_margin': float(r[8]) if r[8] is not None else None,
+                    })
+                results['models'][table] = {
+                    'table': table,
+                    'count': len(models_rows),
+                    'predictions': models_rows,
+                }
+            except Exception as e:
+                logger.warning(f"Could not read {self.models_schema}.{table}: {e}")
+                results['models'][table] = {
+                    'table': table,
+                    'count': 0,
+                    'predictions': []
+                }
+
+        return results
         
     def get_available_tables(self, db: Session) -> List[TableInfo]:
         """Get list of all available trading tables with metadata"""

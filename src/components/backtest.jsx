@@ -152,6 +152,454 @@ const BacktestSettings = ({
   );
 };
 
+// Compact, visually clear prediction card displayed above the chart
+const CurrentPredictionCard = ({ isDarkMode, prediction, modelName }) => {
+  const direction = prediction?.pred_label === 1 ? 'UP' : 'DOWN';
+  const probPct = ((prediction?.pred_prob_up || 0) * 100).toFixed(1);
+  const threshold = (prediction?.threshold_used || 0).toFixed(2);
+  const marginPct = (Math.abs(prediction?.decision_margin || 0) * 100).toFixed(1);
+  const truth = prediction ? (prediction.true_label === 1 ? 'UP' : 'DOWN') : 'N/A';
+  const isCorrect = !!prediction?.correct;
+
+  return (
+    <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Current Candle Prediction</h3>
+          {modelName && (
+            <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Model: {modelName}</span>
+          )}
+        </div>
+        {prediction && (
+          <span className={`text-xs px-2 py-1 rounded ${
+            isCorrect ? (isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700') : (isDarkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-700')
+          }`}>{isCorrect ? 'Correct' : 'Incorrect'}</span>
+        )}
+      </div>
+
+      {!prediction ? (
+        <div className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>No prediction for this candle.</div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <div className={`col-span-2 md:col-span-2 flex items-center justify-center rounded-lg py-4 font-bold text-xl ${
+            direction === 'UP' ? 'bg-green-600/10 text-green-400' : 'bg-red-600/10 text-red-400'
+          }`}>
+            {direction}
+          </div>
+          <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Probability (p_up)</div>
+            <div className="font-semibold text-lg">{probPct}%</div>
+          </div>
+          <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Threshold</div>
+            <div className="font-semibold text-lg">{threshold}</div>
+          </div>
+          <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Confidence</div>
+            <div className="font-semibold text-lg">{marginPct}%</div>
+          </div>
+          <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Truth</div>
+            <div className="font-semibold text-lg">{truth}</div>
+          </div>
+        </div>
+      )}
+
+      {prediction && (
+        <div className={`mt-3 font-mono text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          pred={direction} p_up={(prediction.pred_prob_up || 0).toFixed(4)} thr={threshold} margin={(prediction.decision_margin || 0).toFixed(4)} truth={truth} → {isCorrect ? '✅ CORRECT' : '❌ WRONG'}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Enhanced Model prediction panel with DB (v1_models) integration + CSV fallback
+const ModelPredictionPanel = ({
+  isDarkMode,
+  selectedSymbol,
+  selectedTimeframe,
+  currentIndex,
+  setCurrentIndex,
+  fullData,
+  onCurrentPredictionChange
+}) => {
+  const [selectedModel, setSelectedModel] = useState('gb1d'); // Default to GB 1D (normalized)
+  const [availableModels, setAvailableModels] = useState([]);
+  const [allPredictions, setAllPredictions] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Model metadata and key normalization between DB tables (gb1d, gb4h, lgbm4h)
+  // and CSV keys (gb_1d, gb_4h, lgbm_4h)
+  const MODEL_META = {
+    gb1d: { key: 'gb1d', name: 'Gradient Boosting 1D', threshold: 0.57 },
+    gb4h: { key: 'gb4h', name: 'Gradient Boosting 4H', threshold: 0.50 },
+    lgbm4h: { key: 'lgbm4h', name: 'LightGBM Financial 4H', threshold: 0.30 },
+  };
+  const normalizeKey = (k) => (k ? k.replace(/_/g, '').toLowerCase() : '');
+
+  const canPredict = selectedSymbol === 'spy' && (selectedTimeframe === '1d' || selectedTimeframe === '4h');
+  const currentCandle = fullData && fullData.length > 0 && currentIndex >= 0 ? fullData[currentIndex] : null;
+
+  // Helper to build available models array from DB response
+  const buildAvailableFromDB = (resp) => {
+    if (!resp || !resp.models) return [];
+    
+    // Filter models based on current symbol and timeframe
+    const validModels = [];
+    if (selectedSymbol === 'spy' && selectedTimeframe === '1d') {
+      // Only gb1d for SPY 1D
+      if (resp.models.gb1d && (resp.models.gb1d?.count || 0) > 0) {
+        validModels.push('gb1d');
+      }
+    } else if (selectedSymbol === 'spy' && selectedTimeframe === '4h') {
+      // gb4h and lgbm4h for SPY 4H  
+      if (resp.models.gb4h && (resp.models.gb4h?.count || 0) > 0) {
+        validModels.push('gb4h');
+      }
+      if (resp.models.lgbm4h && (resp.models.lgbm4h?.count || 0) > 0) {
+        validModels.push('lgbm4h');
+      }
+    }
+    
+    return validModels.map((k) => {
+      const nk = normalizeKey(k);
+      const meta = MODEL_META[nk] || { key: nk, name: nk, threshold: null };
+      return {
+        key: nk,
+        name: meta.name,
+        threshold: meta.threshold,
+        record_count: resp.models[k]?.count || 0,
+        available: (resp.models[k]?.count || 0) > 0,
+      };
+    });
+  };
+
+  // Load predictions when symbol/timeframe changes (Database only)
+  useEffect(() => {
+    if (!canPredict) {
+      setAllPredictions({});
+      setError(null);
+      return;
+    }
+
+    const loadPredictions = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Load model results from database
+        const dbResp = await fetch(`${API_BASE_URL}/model-results/${selectedSymbol}/${selectedTimeframe}`);
+        if (!dbResp.ok) {
+          throw new Error(`Database error: HTTP ${dbResp.status}`);
+        }
+        
+        const dbData = await dbResp.json();
+        const byModel = {};
+        Object.entries(dbData.models || {}).forEach(([table, payload]) => {
+          const nk = normalizeKey(table);
+          if (!byModel[nk]) byModel[nk] = {};
+          (payload?.predictions || []).forEach((p) => {
+            if (p?.timestamp) byModel[nk][p.timestamp] = p;
+          });
+        });
+        
+        setAllPredictions(byModel);
+        const avail = buildAvailableFromDB(dbData);
+        setAvailableModels(avail);
+        
+        if (avail.length > 0) {
+          const prefer = selectedTimeframe === '1d' ? 'gb1d' : 'lgbm4h';
+          const pick = avail.find(a => a.key === prefer) || avail[0];
+          setSelectedModel(pick.key);
+        }
+      } catch (e) {
+        console.error('Error loading predictions:', e);
+        setError(`Failed to load predictions from database: ${e.message}`);
+        setAllPredictions({});
+        setAvailableModels([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPredictions();
+  }, [selectedSymbol, selectedTimeframe, canPredict]);
+
+  // Get current candle prediction
+  const getCurrentPrediction = () => {
+    if (!currentCandle || !allPredictions[selectedModel]) {
+      return null;
+    }
+
+    // Try to match by timestamp - normalize both timestamps for comparison
+    const candleTimestamp = currentCandle.timestamp;
+    const predictions = allPredictions[selectedModel];
+    
+    // First try exact match
+    if (predictions[candleTimestamp]) {
+      return predictions[candleTimestamp];
+    }
+    
+    // If no exact match, try to find by converting timestamps to Date objects and comparing
+    const candleDate = new Date(candleTimestamp);
+    const candleTimeMs = candleDate.getTime();
+    
+    // Look for predictions within a small time window (1 minute tolerance)
+    for (const [predTimestamp, prediction] of Object.entries(predictions)) {
+      const predDate = new Date(predTimestamp);
+      const predTimeMs = predDate.getTime();
+      const timeDiff = Math.abs(candleTimeMs - predTimeMs);
+      
+      // If within 1 minute, consider it a match
+      if (timeDiff <= 60000) {
+        return prediction;
+      }
+    }
+    
+    return null;
+  };
+
+  const currentPrediction = getCurrentPrediction();
+  
+  // Get compatible models for current symbol/timeframe
+  const compatibleModels = availableModels.filter(m => m.available);
+
+  // Format prediction string as requested
+  const formatPredictionString = (prediction) => {
+    if (!prediction) return "No prediction available for this candle";
+    
+    try {
+      const pred_label = prediction.pred_label === 1 ? "UP" : "DOWN";
+      const truth_label = prediction.true_label === 1 ? "UP" : "DOWN";
+      const prob = (prediction.pred_prob_up || 0).toFixed(4);
+      const threshold = (prediction.threshold_used || 0).toFixed(2);
+      const margin = (prediction.decision_margin || 0).toFixed(4);
+      const correct_symbol = prediction.correct ? "✅ CORRECT" : "❌ WRONG";
+      
+      return `pred=${pred_label} p_up=${prob} thr=${threshold} margin=${margin} truth=${truth_label} → ${correct_symbol}`;
+    } catch (e) {
+      console.error('Error formatting prediction:', e, prediction);
+      return "Error formatting prediction";
+    }
+  };
+
+  // Notify parent of the current prediction and model name for the standalone card
+  useEffect(() => {
+    if (!onCurrentPredictionChange) return;
+    const modelName = availableModels.find(m => m.key === selectedModel)?.name || selectedModel;
+    onCurrentPredictionChange({ prediction: currentPrediction, modelName });
+  }, [currentPrediction, selectedModel, availableModels, onCurrentPredictionChange]);
+
+  return (
+    <div className={`rounded-lg shadow-md p-6 transition-colors duration-200 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Database Model Predictions
+          </h3>
+          <InfoTooltip
+            id="database-model-predictions"
+            isDarkMode={isDarkMode}
+            content={(
+              <div>
+                <p className="font-semibold mb-2">🤖 Database Model Predictions</p>
+                <p className="mb-2">Shows predictions from pre-trained models stored in PostgreSQL v1_models schema:</p>
+                <ul className="list-disc list-inside text-xs space-y-1">
+                  <li><strong>GB 1D:</strong> Gradient Boosting for SPY daily (threshold: 0.57)</li>
+                  <li><strong>GB 4H:</strong> Gradient Boosting for SPY 4-hour (threshold: 0.50)</li>
+                  <li><strong>LightGBM 4H:</strong> LightGBM Financial for SPY 4-hour (threshold: 0.30)</li>
+                  <li><strong>Format:</strong> pred=UP/DOWN p_up=probability thr=threshold margin=decision_margin truth=actual → ✅/❌</li>
+                </ul>
+              </div>
+            )}
+          />
+        </div>
+        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          {canPredict ? `SPY ${selectedTimeframe.toUpperCase()} • ${availableModels.length} models available` : 'Database predictions available for SPY 1D/4H only'}
+        </span>
+      </div>
+
+      {!canPredict ? (
+        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+          <div className="text-sm font-medium">Model Predictions Not Available</div>
+          <div className="text-xs mt-1">
+            Database model predictions are only available for SPY symbol with 1d or 4h timeframes.
+            Current selection: {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Model Selection */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Select Model
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className={`w-full rounded-md px-3 py-2 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+              >
+                {availableModels.map(model => (
+                  <option key={model.key} value={model.key}>
+                    {model.name} (thr: {model.threshold})
+                  </option>
+                ))}
+              </select>
+              {availableModels.length === 0 && (
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                  No compatible models found for {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
+                </div>
+              )}
+            </div>
+            
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Current Candle Info
+              </label>
+              <div className={`rounded-md p-3 text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                {currentCandle ? (
+                  <>
+                    <div>Index: {currentIndex + 1} / {fullData.length}</div>
+                    <div>Time: {new Date(currentCandle.timestamp).toLocaleString()}</div>
+                    <div>Close: ${currentCandle.close?.toFixed(2)}</div>
+                  </>
+                ) : (
+                  <div>No candle selected</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Standalone prediction card is rendered above the chart; here we only manage selection/history */}
+          {loading && (
+            <div className={isDarkMode ? 'text-blue-300' : 'text-blue-700'}>Loading predictions...</div>
+          )}
+          {error && (
+            <div className={isDarkMode ? 'text-red-300' : 'text-red-700'}>Error: {error}</div>
+          )}
+
+          {/* Model Statistics */}
+          {availableModels.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {availableModels.map(model => {
+                const modelPredictions = Object.values(allPredictions[model.key] || {});
+                const correctCount = modelPredictions.filter(p => p.correct).length;
+                const accuracy = modelPredictions.length > 0 ? (correctCount / modelPredictions.length * 100).toFixed(1) : 'N/A';
+                
+                return (
+                  <div key={model.key} className={`rounded-md p-3 border ${
+                    selectedModel === model.key 
+                      ? isDarkMode ? 'border-blue-500 bg-blue-900/20' : 'border-blue-500 bg-blue-50'
+                      : isDarkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'
+                  }`}>
+                    <div className={`text-sm font-semibold mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {model.name}
+                    </div>
+                    <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      <div>Threshold: {model.threshold}</div>
+                      <div>Records: {model.record_count}</div>
+                      <div>Accuracy: {accuracy}%</div>
+                      {model.date_range && (
+                        <div>Range: {new Date(model.date_range.start).toLocaleDateString()} - {new Date(model.date_range.end).toLocaleDateString()}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Navigation through predictions */}
+          {currentPrediction && (
+            <div className="mt-4">
+              <div className={`text-xs mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Prediction {currentPrediction.candle_index || currentIndex + 1} • Model: {availableModels.find(m => m.key === selectedModel)?.name}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const newIndex = Math.max(0, currentIndex - 1);
+                    setCurrentIndex(newIndex);
+                  }}
+                  disabled={currentIndex <= 0}
+                  className={`px-3 py-1 text-xs rounded ${
+                    currentIndex <= 0
+                      ? isDarkMode ? 'bg-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : isDarkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  ← Prev Candle
+                </button>
+                <button
+                  onClick={() => {
+                    const newIndex = Math.min(fullData.length - 1, currentIndex + 1);
+                    setCurrentIndex(newIndex);
+                  }}
+                  disabled={currentIndex >= fullData.length - 1}
+                  className={`px-3 py-1 text-xs rounded ${
+                    currentIndex >= fullData.length - 1
+                      ? isDarkMode ? 'bg-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : isDarkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Next Candle →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Prediction History/Context (show nearby predictions) */}
+          {allPredictions[selectedModel] && Object.keys(allPredictions[selectedModel]).length > 0 && (
+            <details className="mt-4">
+              <summary className={`cursor-pointer text-sm font-medium ${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`}>
+                📊 View All Predictions for {availableModels.find(m => m.key === selectedModel)?.name} ({Object.keys(allPredictions[selectedModel]).length} total)
+              </summary>
+              <div className={`mt-3 max-h-64 overflow-y-auto rounded border ${isDarkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="space-y-1 p-3">
+                  {Object.values(allPredictions[selectedModel])
+                    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+                    .map((pred, idx) => {
+                      const isCurrentCandle = currentCandle && pred.timestamp === currentCandle.timestamp;
+                      return (
+                        <div 
+                          key={idx}
+                          className={`p-2 rounded text-xs font-mono cursor-pointer transition-colors ${
+                            isCurrentCandle 
+                              ? isDarkMode ? 'bg-blue-900/40 border-l-4 border-blue-400' : 'bg-blue-50 border-l-4 border-blue-500'
+                              : isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50'
+                          }`}
+                          onClick={() => {
+                            // Find the index of this candle in fullData and navigate to it
+                            const candleIndex = fullData.findIndex(c => c.timestamp === pred.timestamp);
+                            if (candleIndex >= 0) {
+                              setCurrentIndex(candleIndex);
+                            }
+                          }}
+                          title="Click to navigate to this candle"
+                        >
+                          <div className={`font-semibold mb-1 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            {new Date(pred.timestamp).toLocaleDateString()} {new Date(pred.timestamp).toLocaleTimeString()}
+                          </div>
+                          <div className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                            {formatPredictionString(pred)}
+                          </div>
+                        </div>
+                      );
+                    })
+                  }
+                </div>
+              </div>
+            </details>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 // Data Selection & Controls (mirrors the one inside Chart.jsx)
 const DataSelectionControls = ({ handleRefresh, isDarkMode }) => {
   const {
@@ -458,6 +906,7 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
   const [speedMs, setSpeedMs] = useState(1000);
   const [stepSize, setStepSize] = useState(1);
   const [loopPlayback, setLoopPlayback] = useState(false);
+  const [currentPredictionInfo, setCurrentPredictionInfo] = useState({ prediction: null, modelName: null });
 
   // Build display data whenever currentIndex or fullData changes
   const visibleCandles = useMemo(() => {
@@ -595,9 +1044,8 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       }
 
       setChartData(data);
-      // Start with first 50 candles or available
-      const startIdx = Math.min((data.data?.length || 1) - 1, 50);
-      setCurrentIndex(Math.max(startIdx, 0));
+      // Always start at the first candle (index 0)
+      setCurrentIndex(0);
     } catch (err) {
       setError(`Failed to fetch chart data: ${err.message}`);
     } finally {
@@ -674,6 +1122,13 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
         setLoopPlayback={setLoopPlayback}
       />
 
+      {/* Standalone current prediction card */}
+      <CurrentPredictionCard
+        isDarkMode={isDarkMode}
+        prediction={currentPredictionInfo.prediction}
+        modelName={currentPredictionInfo.modelName}
+      />
+
       {/* Chart */}
       <div className={`rounded-lg shadow-md transition-colors duration-200 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
         <div className={`px-6 py-4 border-b flex items-center justify-between transition-colors duration-200 ${
@@ -709,6 +1164,17 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
           )}
         </div>
       </div>
+
+      {/* Predictions & confidence */}
+      <ModelPredictionPanel
+        isDarkMode={isDarkMode}
+        selectedSymbol={selectedSymbol}
+        selectedTimeframe={selectedTimeframe}
+        currentIndex={currentIndex}
+        setCurrentIndex={setCurrentIndex}
+        fullData={fullData}
+        onCurrentPredictionChange={setCurrentPredictionInfo}
+      />
     </div>
   );
 };
