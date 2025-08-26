@@ -4,9 +4,11 @@ Trading data API routes
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
 import logging
+import pytz
 
 from database import get_db
 from models import (
@@ -21,7 +23,6 @@ from models import (
 from pydantic import BaseModel
 from typing import Dict, Any
 from services.trading_service import TradingDataService
-from services.model_inference import model_inference_service
 from services.csv_model_service import csv_model_service
 
 # Shape similarity response models
@@ -474,3 +475,201 @@ async def get_csv_prediction_by_timestamp(model_key: str, timestamp: str):
     except Exception as e:
         logger.error(f"Error getting CSV prediction for {model_key} at {timestamp}: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
+    
+
+@router.get("/live-model-predictions/{symbol}/{timeframe}")
+async def get_live_model_predictions(
+    symbol: str,
+    timeframe: str,
+    start_date: str,
+    end_date: str,
+    order: str = "asc",
+    model: Optional[str] = None
+):
+    """
+    Get live model predictions for a symbol/timeframe using loaded ML models
+    
+    This endpoint fetches fresh data from the database and runs it through
+    the trained ML models to generate real-time predictions.
+    
+    Supported models:
+    - GradientBoosting (for 1d and 4h timeframes)
+    - LightGBM_Financial (for 4h timeframe)
+    """
+    try:
+        # Import the model inference service
+        from services.model_inference import model_inference_service
+        
+        # Validate inputs
+        symbol = symbol.lower()
+        if symbol != "spy":
+            raise HTTPException(status_code=400, detail="Only SPY symbol is currently supported")
+        
+        if timeframe not in ["1d", "4h"]:
+            raise HTTPException(status_code=400, detail="Only 1d and 4h timeframes are supported")
+        
+        # Determine which model to use
+        if model is None:
+            # Default model selection
+            if timeframe == "1d":
+                model = "GradientBoosting"
+            elif timeframe == "4h":
+                model = "GradientBoosting"  # Can also be "LightGBM_Financial"
+        
+        # Check if model is available
+        if not model_inference_service.model_available(model, timeframe):
+            available_models = []
+            for test_model in ["GradientBoosting", "LightGBM_Financial"]:
+                if model_inference_service.model_available(test_model, timeframe):
+                    available_models.append(test_model)
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Model '{model}' not available for {timeframe}. Available models: {available_models}"
+            )
+        
+        # Parse dates
+        try:
+            # Accept ISO or YYYY-MM-DD; always produce inclusive end-of-day UTC
+            if len(start_date) == 10:
+                start_dt = pytz.UTC.localize(datetime.strptime(start_date, '%Y-%m-%d'))
+            else:
+                start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if start_dt.tzinfo is None:
+                    start_dt = pytz.UTC.localize(start_dt)
+
+            if len(end_date) == 10:
+                end_dt = pytz.UTC.localize(datetime.strptime(end_date, '%Y-%m-%d')).replace(
+                    hour=23, minute=59, second=59, microsecond=999999
+                )
+            else:
+                end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if end_dt.tzinfo is None:
+                    end_dt = pytz.UTC.localize(end_dt)
+                # If caller passed a date without time, make it inclusive end-of-day
+                if end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0 and end_dt.microsecond == 0:
+                    end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD or ISO format")
+        
+        # Get database connection
+        db = next(get_db())
+        
+        # Fetch data from the database using the same logic as other endpoints
+        table_name = f"{symbol}_{timeframe}"
+        try:
+            # Check if table exists
+            result = db.execute(text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'backtest' 
+                    AND table_name = '{table_name}'
+                );
+            """))
+            table_exists = result.scalar()
+            
+            if not table_exists:
+                raise HTTPException(status_code=404, detail=f"Table {table_name} not found")
+            
+            # Fetch the data with all required columns for model inference
+            query = text(f"""
+                SELECT 
+                    timestamp,
+                    open, high, low, close, volume,
+                    raw_ohlcv_vec,
+                    iso_ohlc,
+                    future
+                FROM backtest.{table_name}
+                WHERE timestamp >= :start_date 
+                AND timestamp <= :end_date
+                ORDER BY timestamp {order.upper()}
+            """)
+            
+            result = db.execute(query, {
+                "start_date": start_dt,
+                "end_date": end_dt
+            })
+            
+            rows = result.fetchall()
+            
+            if not rows:
+                return {
+                    "symbol": symbol.upper(),
+                    "timeframe": timeframe,
+                    "model": model,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "predictions": [],
+                    "coverage": {"train": 0, "inference": 0, "unsupported": 0},
+                    "total_predictions": 0
+                }
+            
+            # Convert rows to the format expected by model_inference_service
+            data_rows = []
+            for row in rows:
+                row_dict = {
+                    "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+                    "open": float(row.open) if row.open is not None else 0.0,
+                    "high": float(row.high) if row.high is not None else 0.0,
+                    "low": float(row.low) if row.low is not None else 0.0,
+                    "close": float(row.close) if row.close is not None else 0.0,
+                    "volume": float(row.volume) if row.volume is not None else 0.0,
+                    "raw_ohlcv_vec": row.raw_ohlcv_vec,  # Vector column
+                    "iso_ohlc": row.iso_ohlc,  # Vector column  
+                    "future": row.future  # Target label (may be None for future data)
+                }
+                data_rows.append(row_dict)
+            
+            # Run predictions using the model inference service
+            # Set train_cutoff to distinguish between historical (train) and recent (inference) data
+            # For live predictions, we typically consider anything recent as "inference"
+            train_cutoff = "2024-12-16"  # Day before test period starts (matches notebook)
+            
+            predictions, coverage = model_inference_service.predict_for_rows(
+                model_name=model,
+                timeframe=timeframe,
+                rows=data_rows,
+                train_cutoff=train_cutoff
+            )
+            
+            # Convert predictions to serializable format
+            prediction_results = []
+            for pred in predictions:
+                # Coerce any numpy scalar types to native Python types
+                try:
+                    is_train_native = None if pred.is_train is None else bool(pred.is_train)
+                except Exception:
+                    is_train_native = None
+
+                prediction_results.append({
+                    "timestamp": pred.timestamp,
+                    "prediction": int(pred.pred),
+                    "probability": float(pred.proba),
+                    "confidence": float(pred.confidence),
+                    "is_training_period": is_train_native
+                })
+            
+            return {
+                "symbol": symbol.upper(),
+                "timeframe": timeframe,
+                "model": model,
+                "start_date": start_date,
+                "end_date": end_date,
+                "predictions": prediction_results,
+                "coverage": coverage,
+                "total_predictions": len(prediction_results),
+                "model_info": {
+                    "description": f"{model} model for {timeframe} timeframe",
+                    "features_used": 16,
+                    "train_cutoff": train_cutoff
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Database error in live model predictions: {e}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in live model predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,50 @@
+{
+  "model_type": "GradientBoostingClassifier",
+  "timeframe": "1d",
+  "feature_contract_version": "v1",
+  "feature_names": [
+    "raw_o",
+    "raw_h",
+    "raw_l",
+    "raw_c",
+    "raw_v",
+    "iso_0",
+    "iso_1",
+    "iso_2",
+    "iso_3",
+    "tf_1d",
+    "tf_4h",
+    "hl_range",
+    "price_change",
+    "upper_shadow",
+    "lower_shadow",
+    "volume_m"
+  ],
+  "calibrated_threshold": 0.57,
+  "artifact_paths": {
+    "model_joblib": "gb_1d_final.joblib",
+    "scaler_joblib": "scaler_1d.joblib"
+  },
+  "inference_notes": {
+    "scaling": "StandardScaler fitted on first 80% of pre-test 1d training data",
+    "one_hot": {
+      "tf_1d": 1,
+      "tf_4h": 0
+    },
+    "expected_columns_in_csv": [
+      "timestamp",
+      "raw_ohlcv_vec",
+      "iso_ohlc",
+      "future"
+    ]
+  },
+  "gb_params": {
+    "n_estimators": 180,
+    "max_depth": 5,
+    "learning_rate": 0.1625,
+    "subsample": 0.8043,
+    "min_samples_split": 2,
+    "min_samples_leaf": 1,
+    "random_state": 42
+  }
+}

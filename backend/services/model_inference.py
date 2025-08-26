@@ -61,15 +61,15 @@ class ModelInferenceService:
 
     def _models_dir(self) -> Path:
         # Models are currently stored under the frontend folder per user note
-        return self._project_root() / "src" / "components" / "v1 base models"
+        return self._project_root() / "src" / "components" / "v1 daygent models"
 
     def _load_models(self) -> None:
         models_dir = self._models_dir()
         # Map (model_name, timeframe) -> filename
         path_map: Dict[Tuple[str, str], str] = {
-            ("GradientBoosting", "1d"): "gb_1d_base.joblib",
-            ("GradientBoosting", "4h"): "gb_4h_base.joblib",
-            ("LightGBM_Financial", "4h"): "lgb_fin_4h_base.joblib",
+            ("GradientBoosting", "1d"): "gb_1d_versionlock/gb_1d_final.joblib",
+            ("GradientBoosting", "4h"): "gb_4h/gb_4h_w2_style.joblib",
+            ("LightGBM_Financial", "4h"): "lgbm_4h/lightgbm_financial_4h_only.joblib",
         }
         for key, fname in path_map.items():
             fpath = models_dir / fname
@@ -82,10 +82,13 @@ class ModelInferenceService:
             else:
                 self._models[key] = None
 
-        # Optional scalers if present, naming convention (not required)
-        # e.g., scaler_1d.joblib, scaler_4h.joblib
-        for tf in ["1d", "4h"]:
-            scaler_path = models_dir / f"scaler_{tf}.joblib"
+        # Optional scalers if present, look in specific model directories
+        scaler_paths = {
+            "1d": models_dir / "gb_1d_versionlock" / "scaler_1d.joblib",
+            "4h": models_dir / "gb_4h" / "scaler_4h.joblib",  # Add when available
+        }
+        
+        for tf, scaler_path in scaler_paths.items():
             if scaler_path.exists():
                 try:
                     self._scalers[("StandardScaler", tf)] = joblib.load(str(scaler_path))
@@ -94,6 +97,46 @@ class ModelInferenceService:
 
     def model_available(self, model_name: str, timeframe: str) -> bool:
         return self._models.get((model_name, timeframe)) is not None
+
+    @staticmethod
+    def _parse_vector(value: Any, expected_len: int) -> Optional[List[float]]:
+        """Parse a vector field from DB/CSV into a fixed-length list of floats.
+
+        Supports Python lists/tuples/ndarrays and string encodings like
+        "[1,2,3]" or "{1,2,3}". Pads/truncates to expected_len.
+        """
+        if value is None:
+            return None
+        # Direct array-like
+        if isinstance(value, (list, tuple, np.ndarray)):
+            try:
+                floats = [float(x) for x in list(value)]
+            except Exception:
+                return None
+            if len(floats) < expected_len:
+                floats = (floats + [0.0] * expected_len)[:expected_len]
+            else:
+                floats = floats[:expected_len]
+            return floats
+        # String-encoded vectors
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return None
+            # Strip common wrappers
+            s = s.strip('[]{}()"\'')
+            if not s:
+                return None
+            # Normalize delimiters and split
+            parts = [p for p in s.replace(';', ',').split(',') if p.strip() != ""]
+            try:
+                floats = [float(p.strip()) for p in parts][:expected_len]
+            except Exception:
+                return None
+            if len(floats) < expected_len:
+                floats = (floats + [0.0] * expected_len)[:expected_len]
+            return floats
+        return None
 
     @staticmethod
     def _build_feature_vector(row: Dict[str, Any], timeframe: str) -> np.ndarray:
@@ -105,23 +148,22 @@ class ModelInferenceService:
          one_hot_1d, one_hot_4h,
          hl_range, price_change, upper_shadow, lower_shadow, volume_m]
         """
-        o = float(row.get("open") or 0.0)
-        h = float(row.get("high") or 0.0)
-        l = float(row.get("low") or 0.0)
-        c = float(row.get("close") or 0.0)
-        v = float(row.get("volume") or 0.0)
+        # Preferred: parse from vector columns as in training/notebook
+        raw = ModelInferenceService._parse_vector(row.get("raw_ohlcv_vec"), 5)
+        if raw is None:
+            # Fallback to individual columns if vector missing
+            o = float(row.get("open") or 0.0)
+            h = float(row.get("high") or 0.0)
+            l = float(row.get("low") or 0.0)
+            c = float(row.get("close") or 0.0)
+            v = float(row.get("volume") or 0.0)
+            raw = [o, h, l, c, v]
+        o, h, l, c, v = [float(x) for x in raw[:5]]
 
-        # iso features might be under different keys depending on DB
-        iso_vec = row.get("iso_ohlc") or row.get("iso_ohlc_vec")
-        if iso_vec is None:
+        # ISO vector
+        iso = ModelInferenceService._parse_vector(row.get("iso_ohlc") or row.get("iso_ohlc_vec"), 4)
+        if iso is None:
             iso = [0.0, 0.0, 0.0, 0.0]
-        else:
-            try:
-                iso = [float(x) for x in list(iso_vec)[:4]]
-                if len(iso) < 4:
-                    iso = (iso + [0.0, 0.0, 0.0, 0.0])[:4]
-            except Exception:
-                iso = [0.0, 0.0, 0.0, 0.0]
 
         tf_one_hot = [1.0 if timeframe == "1d" else 0.0, 1.0 if timeframe == "4h" else 0.0]
 
@@ -209,6 +251,13 @@ class ModelInferenceService:
                     is_train = np.datetime64(ts) <= cutoff
                 except Exception:
                     is_train = None
+            # Ensure JSON-serializable native bool, not numpy.bool_
+            if is_train is not None:
+                try:
+                    is_train = bool(is_train)  # type: ignore[assignment]
+                except Exception:
+                    # Fallback in case of unexpected types
+                    is_train = True if str(is_train).lower() == "true" else False
             if is_train is None:
                 # Unknown, count as inference for display purposes
                 coverage["inference"] += 1

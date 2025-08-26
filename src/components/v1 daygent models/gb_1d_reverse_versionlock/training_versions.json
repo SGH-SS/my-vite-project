@@ -1,0 +1,9 @@
+{
+  "python": "3.12.11 (main, Jun  4 2025, 08:56:18) [GCC 11.4.0]",
+  "pandas": "2.2.2",
+  "numpy": "2.0.2",
+  "scikit-learn": "1.6.1",
+  "xgboost": "3.0.4",
+  "lightgbm": "4.6.0",
+  "joblib": "1.5.1"
+}

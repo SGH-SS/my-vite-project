@@ -1,0 +1,59 @@
+{
+  "reverse_test_date": "2025-08-26T00:21:29.029417",
+  "perfect_match": true,
+  "loaded_model_results": {
+    "test_accuracy": 0.7142857142857143,
+    "test_auc": 0.7733333333333334,
+    "threshold_used": 0.57,
+    "test_samples": 35,
+    "predictions_match": true
+  },
+  "original_results": {
+    "test_accuracy": 0.7142857142857143,
+    "test_auc": 0.7733333333333334,
+    "validation_accuracy": 0.49105367793240556,
+    "validation_auc": 0.48546511627906974,
+    "chosen_threshold": 0.57,
+    "train_samples": 2009,
+    "val_samples": 503,
+    "test_samples": 35,
+    "feature_count": 16,
+    "model_params": {
+      "n_estimators": 180,
+      "max_depth": 5,
+      "learning_rate": 0.1625,
+      "subsample": 0.8043,
+      "min_samples_split": 2,
+      "min_samples_leaf": 1,
+      "random_state": 42
+    },
+    "feature_names": [
+      "raw_o",
+      "raw_h",
+      "raw_l",
+      "raw_c",
+      "raw_v",
+      "iso_0",
+      "iso_1",
+      "iso_2",
+      "iso_3",
+      "tf_1d",
+      "tf_4h",
+      "hl_range",
+      "price_change",
+      "upper_shadow",
+      "lower_shadow",
+      "volume_m"
+    ],
+    "report_txt": "gb_1d_day_by_day.txt",
+    "predictions_csv": "test_predictions_1d.csv",
+    "model_path": "gb_1d_final.joblib",
+    "scaler_path": "scaler_1d.joblib",
+    "test_period": "2024-12-17 to 2025-02-07"
+  },
+  "differences": {
+    "accuracy_diff": 0.0,
+    "auc_diff": 0.0,
+    "sample_count_match": true
+  }
+}

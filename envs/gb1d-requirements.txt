@@ -1,0 +1,25 @@
+# Core ML libraries (exact versions from training)
+numpy==2.0.2
+pandas==2.2.2
+scikit-learn==1.6.1
+xgboost==3.0.4
+lightgbm==4.6.0
+joblib==1.5.1
+
+# Web framework and database
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+pydantic==2.5.3
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+alembic==1.12.1
+
+# Additional training dependencies
+matplotlib
+seaborn
+tqdm
+pyarrow

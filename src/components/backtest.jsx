@@ -214,6 +214,209 @@ const CurrentPredictionCard = ({ isDarkMode, prediction, modelName }) => {
   );
 };
 
+// Live Model Prediction Box - uses real-time model inference API
+const LivePredictionBox = ({
+  isDarkMode,
+  selectedSymbol,
+  selectedTimeframe,
+  currentCandle,
+  currentIndex
+}) => {
+  const [livePrediction, setLivePrediction] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Only support SPY 1D with GB1D model for now
+  const isSupported = selectedSymbol === 'spy' && selectedTimeframe === '1d';
+  
+  // Training cutoff - only show predictions for test period (2024-12-17 and after)
+  const TRAIN_CUTOFF = new Date('2024-12-16T23:59:59.999Z');
+  const isTestPeriod = currentCandle && new Date(currentCandle.timestamp) > TRAIN_CUTOFF;
+  
+  const shouldShowPrediction = isSupported && isTestPeriod && currentCandle;
+
+  // Fetch live prediction for current candle
+  useEffect(() => {
+    if (!shouldShowPrediction) {
+      setLivePrediction(null);
+      setError(null);
+      return;
+    }
+
+    const fetchLivePrediction = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Format the current candle's date for API call
+        const candleDate = new Date(currentCandle.timestamp);
+        const dateStr = candleDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        
+        const response = await fetch(
+          `${API_BASE_URL}/live-model-predictions/${selectedSymbol}/${selectedTimeframe}?start_date=${dateStr}&end_date=${dateStr}`
+        );
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Find prediction that matches current candle timestamp
+        const matchingPrediction = data.predictions?.find(pred => {
+          const predTime = new Date(pred.timestamp).getTime();
+          const candleTime = new Date(currentCandle.timestamp).getTime();
+          return Math.abs(predTime - candleTime) <= 60000; // 1 minute tolerance
+        });
+        
+        setLivePrediction(matchingPrediction || null);
+        
+      } catch (err) {
+        console.error('Error fetching live prediction:', err);
+        setError(err.message);
+        setLivePrediction(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLivePrediction();
+  }, [shouldShowPrediction, currentCandle, selectedSymbol, selectedTimeframe]);
+
+  if (!isSupported) {
+    return (
+      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Model Predictions</h3>
+          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+            Real-time AI
+          </span>
+        </div>
+        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+          <div className="text-sm font-medium">Live Predictions Not Available</div>
+          <div className="text-xs mt-1">
+            Live model predictions are currently only available for SPY 1D timeframe.
+            Current selection: {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isTestPeriod && currentCandle) {
+    return (
+      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Model Predictions</h3>
+          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+            Real-time AI
+          </span>
+        </div>
+        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+          <div className="text-sm font-medium">Training Period Candle</div>
+          <div className="text-xs mt-1">
+            This candle ({new Date(currentCandle.timestamp).toLocaleDateString()}) is from the training period. 
+            Live predictions are only shown for test period candles (2024-12-17 and after).
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentCandle) {
+    return (
+      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Model Predictions</h3>
+          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+            Real-time AI
+          </span>
+        </div>
+        <div className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>No candle selected for prediction.</div>
+      </div>
+    );
+  }
+
+  const direction = livePrediction?.prediction === 1 ? 'UP' : 'DOWN';
+  const probPct = ((livePrediction?.probability || 0) * 100).toFixed(1);
+  const confidencePct = ((livePrediction?.confidence || 0) * 100).toFixed(1);
+  const threshold = 0.57; // GB1D threshold
+
+  return (
+    <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Model Predictions</h3>
+          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'}`}>
+            Real-time AI
+          </span>
+        </div>
+        <div className="text-right">
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Model: Gradient Boosting 1D
+          </div>
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Candle: {currentIndex + 1} • {new Date(currentCandle.timestamp).toLocaleDateString()}
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDarkMode ? 'border-blue-400' : 'border-blue-600'}`}></div>
+          <span className={`ml-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Running AI model...</span>
+        </div>
+      )}
+
+      {error && (
+        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-red-900/20 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <div className="text-sm font-medium">Prediction Error</div>
+          <div className="text-xs mt-1">{error}</div>
+        </div>
+      )}
+
+      {!loading && !error && !livePrediction && (
+        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-gray-900/20 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+          <div className="text-sm font-medium">No Prediction Available</div>
+          <div className="text-xs mt-1">Unable to generate prediction for this candle.</div>
+        </div>
+      )}
+
+      {!loading && !error && livePrediction && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <div className={`col-span-2 md:col-span-2 flex items-center justify-center rounded-lg py-6 font-bold text-2xl ${
+              direction === 'UP' ? 'bg-green-600/10 text-green-400' : 'bg-red-600/10 text-red-400'
+            }`}>
+              🤖 {direction}
+            </div>
+            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Probability</div>
+              <div className="font-semibold text-lg">{probPct}%</div>
+            </div>
+            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Confidence</div>
+              <div className="font-semibold text-lg">{confidencePct}%</div>
+            </div>
+            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Threshold</div>
+              <div className="font-semibold text-lg">{threshold}</div>
+            </div>
+          </div>
+
+          <div className={`font-mono text-xs p-3 rounded ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+            🤖 Live: pred={direction} p_up={livePrediction.probability.toFixed(4)} thr={threshold} conf={livePrediction.confidence.toFixed(4)} • {new Date(livePrediction.timestamp).toLocaleString()}
+          </div>
+
+          <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            ⚡ This prediction was generated in real-time using the live GB1D model inference engine.
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // Enhanced Model prediction panel with DB (v1_models) integration + CSV fallback
 const ModelPredictionPanel = ({
   isDarkMode,
@@ -908,6 +1111,9 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
   const [loopPlayback, setLoopPlayback] = useState(false);
   const [currentPredictionInfo, setCurrentPredictionInfo] = useState({ prediction: null, modelName: null });
 
+  // Get current candle for live predictions
+  const currentCandle = fullData && fullData.length > 0 && currentIndex >= 0 ? fullData[currentIndex] : null;
+
   // Build display data whenever currentIndex or fullData changes
   const visibleCandles = useMemo(() => {
     if (!fullData || fullData.length === 0) return [];
@@ -1120,6 +1326,15 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
         setStepSize={setStepSize}
         loopPlayback={loopPlayback}
         setLoopPlayback={setLoopPlayback}
+      />
+
+      {/* Live Model Prediction Box */}
+      <LivePredictionBox
+        isDarkMode={isDarkMode}
+        selectedSymbol={selectedSymbol}
+        selectedTimeframe={selectedTimeframe}
+        currentCandle={currentCandle}
+        currentIndex={currentIndex}
       />
 
       {/* Standalone current prediction card */}
