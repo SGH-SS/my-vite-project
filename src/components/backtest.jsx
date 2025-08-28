@@ -420,8 +420,8 @@ const LivePredictionBox = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Only support SPY 1D with GB1D model for now
-  const isSupported = selectedSymbol === 'spy' && selectedTimeframe === '1d';
+  // Support SPY 1D and 4H for live predictions
+  const isSupported = selectedSymbol === 'spy' && (selectedTimeframe === '1d' || selectedTimeframe === '4h');
   
   // Training cutoff - only show predictions for test period (2024-12-17 and after)
   const TRAIN_CUTOFF = new Date('2024-12-16T23:59:59.999Z');
@@ -489,7 +489,7 @@ const LivePredictionBox = ({
         <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
           <div className="text-sm font-medium">Live Predictions Not Available</div>
           <div className="text-xs mt-1">
-            Live model predictions are currently only available for SPY 1D timeframe.
+            Live model predictions are currently only available for SPY 1D and 4H timeframes.
             Current selection: {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
           </div>
         </div>
@@ -534,7 +534,9 @@ const LivePredictionBox = ({
   const direction = livePrediction?.prediction === 1 ? 'UP' : 'DOWN';
   const probPct = ((livePrediction?.probability || 0) * 100).toFixed(1);
   const confidencePct = ((livePrediction?.confidence || 0) * 100).toFixed(1);
-  const threshold = 0.57; // GB1D threshold
+  // Thresholds per timeframe
+  const threshold = selectedTimeframe === '4h' ? 0.50 : 0.57;
+  const modelLabel = selectedTimeframe === '4h' ? 'Gradient Boosting 4H' : 'Gradient Boosting 1D';
 
   return (
     <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -546,9 +548,7 @@ const LivePredictionBox = ({
           </span>
         </div>
         <div className="text-right">
-          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Model: Gradient Boosting 1D
-          </div>
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Model: {modelLabel}</div>
           <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             Candle: {currentIndex + 1} • {new Date(currentCandle.timestamp).toLocaleDateString()}
           </div>
@@ -603,7 +603,7 @@ const LivePredictionBox = ({
           </div>
 
           <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            ⚡ This prediction was generated in real-time using the live GB1D model inference engine.
+            ⚡ This prediction was generated in real-time using the live {modelLabel} inference engine.
           </div>
         </>
       )}
@@ -967,7 +967,9 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       timeScale: {
         borderColor: isDarkMode ? '#4b5563' : '#d1d5db',
         timeVisible: true,
-        secondsVisible: false
+        secondsVisible: false,
+        fixLeftEdge: false,
+        fixRightEdge: false
       }
     });
 
@@ -983,7 +985,40 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
     chartRef.current = chart;
     priceSeriesRef.current = series;
 
-    chart.timeScale().fitContent();
+    // Set a reasonable time range instead of auto-fitting to content
+    const setTimeRange = () => {
+      if (visibleCandles.length === 0) return;
+      
+      // Calculate a reasonable time window based on total data length and current position
+      const totalCandles = fullData.length;
+      const currentPosition = currentIndex;
+      
+      // Show at least 80 candles or 60% of total data, whichever is larger
+      const minCandlesToShow = Math.max(80, Math.floor(totalCandles * 0.6));
+      
+      // Calculate the start position for the visible range
+      let startIndex = Math.max(0, currentPosition - Math.floor(minCandlesToShow / 2));
+      let endIndex = Math.min(totalCandles - 1, startIndex + minCandlesToShow - 1);
+      
+      // Adjust if we're near the end
+      if (endIndex - startIndex < minCandlesToShow - 1) {
+        startIndex = Math.max(0, endIndex - minCandlesToShow + 1);
+      }
+      
+      // Get time range from full data (not just visible candles)
+      const startTime = fullData[startIndex]?.timestamp;
+      const endTime = fullData[endIndex]?.timestamp;
+      
+      if (startTime && endTime) {
+        chart.timeScale().setVisibleRange({
+          from: Math.floor(new Date(startTime).getTime() / 1000),
+          to: Math.floor(new Date(endTime).getTime() / 1000)
+        });
+      }
+    };
+
+    // Set initial time range
+    setTimeout(setTimeRange, 0);
 
     const onResize = () => {
       const newWidth = chartContainerRef.current?.clientWidth || 800;
@@ -991,7 +1026,7 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
     };
     window.addEventListener('resize', onResize);
     chart._onResize = onResize;
-  }, [visibleCandles, isDarkMode]);
+  }, [visibleCandles, isDarkMode, fullData, currentIndex]);
 
   // Update chart data when visibleCandles changes
   useEffect(() => {
@@ -1000,7 +1035,36 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       return;
     }
     priceSeriesRef.current.setData(visibleCandles);
-  }, [visibleCandles, initializeChart]);
+    
+    // Update the visible time range when current index changes
+    if (chartRef.current && fullData.length > 0) {
+      const totalCandles = fullData.length;
+      const currentPosition = currentIndex;
+      
+      // Show at least 80 candles or 60% of total data, whichever is larger
+      const minCandlesToShow = Math.max(80, Math.floor(totalCandles * 0.6));
+      
+      // Calculate the start position for the visible range
+      let startIndex = Math.max(0, currentPosition - Math.floor(minCandlesToShow / 2));
+      let endIndex = Math.min(totalCandles - 1, startIndex + minCandlesToShow - 1);
+      
+      // Adjust if we're near the end
+      if (endIndex - startIndex < minCandlesToShow - 1) {
+        startIndex = Math.max(0, endIndex - minCandlesToShow + 1);
+      }
+      
+      // Get time range from full data
+      const startTime = fullData[startIndex]?.timestamp;
+      const endTime = fullData[endIndex]?.timestamp;
+      
+      if (startTime && endTime) {
+        chartRef.current.timeScale().setVisibleRange({
+          from: Math.floor(new Date(startTime).getTime() / 1000),
+          to: Math.floor(new Date(endTime).getTime() / 1000)
+        });
+      }
+    }
+  }, [visibleCandles, initializeChart, currentIndex, fullData]);
 
   // Autoplay timer
   useEffect(() => {

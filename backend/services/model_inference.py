@@ -85,7 +85,8 @@ class ModelInferenceService:
         # Optional scalers if present, look in specific model directories
         scaler_paths = {
             "1d": models_dir / "gb_1d_versionlock" / "scaler_1d.joblib",
-            "4h": models_dir / "gb_4h" / "scaler_4h.joblib",  # Add when available
+            # Use the exact 4H scaler artifact name present in repo
+            "4h": models_dir / "gb_4h" / "scaler_4h_w2_style.joblib",
         }
         
         for tf, scaler_path in scaler_paths.items():
