@@ -293,8 +293,10 @@ const CombinedPredictionPanel = ({
   // Prediction display values
   const direction = currentPrediction?.pred_label === 1 ? 'UP' : 'DOWN';
   const probPct = ((currentPrediction?.pred_prob_up || 0) * 100).toFixed(1);
-  const threshold = (currentPrediction?.threshold_used || 0).toFixed(2);
-  const marginPct = (Math.abs(currentPrediction?.decision_margin || 0) * 100).toFixed(1);
+  const thresholdUsed = currentPrediction?.threshold_used ?? 0;
+  const threshold = thresholdUsed.toFixed(2);
+  // Decision margin as a number (distance from threshold)
+  const margin = Math.abs((currentPrediction?.pred_prob_up || 0) - thresholdUsed);
   const truth = currentPrediction ? (currentPrediction.true_label === 1 ? 'UP' : 'DOWN') : 'N/A';
   const isCorrect = !!currentPrediction?.correct;
 
@@ -363,8 +365,8 @@ const CombinedPredictionPanel = ({
               <div className="font-semibold">{threshold}</div>
             </div>
             <div className={`text-center p-2 rounded text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Confidence</div>
-              <div className="font-semibold">{marginPct}%</div>
+              <div className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Decision Margin</div>
+              <div className="font-semibold">{margin.toFixed(4)}</div>
             </div>
             <div className={`text-center p-2 rounded text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
               <div className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Truth</div>
@@ -532,10 +534,12 @@ const LivePredictionBox = ({
   }
 
   const direction = livePrediction?.prediction === 1 ? 'UP' : 'DOWN';
-  const probPct = ((livePrediction?.probability || 0) * 100).toFixed(1);
-  const confidencePct = ((livePrediction?.confidence || 0) * 100).toFixed(1);
+  const prob = livePrediction?.probability || 0;
+  const probPct = (prob * 100).toFixed(1);
   // Thresholds per timeframe
   const threshold = selectedTimeframe === '4h' ? 0.50 : 0.57;
+  // Compute decision margin on-the-fly (distance from threshold)
+  const liveDecisionMargin = Math.abs(prob - threshold);
   const modelLabel = selectedTimeframe === '4h' ? 'Gradient Boosting 4H' : 'Gradient Boosting 1D';
 
   return (
@@ -589,8 +593,8 @@ const LivePredictionBox = ({
               <div className="font-semibold text-lg">{probPct}%</div>
             </div>
             <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Confidence</div>
-              <div className="font-semibold text-lg">{confidencePct}%</div>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Decision Margin</div>
+              <div className="font-semibold text-lg">{liveDecisionMargin.toFixed(4)}</div>
             </div>
             <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
               <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Threshold</div>
@@ -599,7 +603,7 @@ const LivePredictionBox = ({
           </div>
 
           <div className={`font-mono text-xs p-3 rounded ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-            🤖 Live: pred={direction} p_up={livePrediction.probability.toFixed(4)} thr={threshold} conf={livePrediction.confidence.toFixed(4)} • {new Date(livePrediction.timestamp).toLocaleString()}
+            🤖 Live: pred={direction} p_up={prob.toFixed(4)} thr={threshold} margin={liveDecisionMargin.toFixed(4)} • {new Date(livePrediction.timestamp).toLocaleString()}
           </div>
 
           <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>

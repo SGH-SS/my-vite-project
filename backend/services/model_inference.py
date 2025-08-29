@@ -182,9 +182,21 @@ class ModelInferenceService:
         return np.array(features, dtype=float)
 
     @staticmethod
-    def _confidence_from_proba(p: float) -> float:
-        # |p-0.5| * 2 ∈ [0,1]
-        return float(abs(p - 0.5) * 2.0)
+    def _decision_margin_from_proba(p: float, threshold: float) -> float:
+        # Decision margin: distance from threshold, normalized to [0,1]
+        # |p - threshold| gives the margin distance
+        return float(abs(p - threshold))
+    
+    @staticmethod
+    def _get_model_threshold(model_name: str, timeframe: str) -> float:
+        """Get the threshold used for this model/timeframe combination"""
+        # Thresholds from the model training results
+        threshold_map = {
+            ("GradientBoosting", "1d"): 0.57,
+            ("GradientBoosting", "4h"): 0.50,
+            ("LightGBM_Financial", "4h"): 0.30,
+        }
+        return threshold_map.get((model_name, timeframe), 0.5)  # Default to 0.5 if not found
 
     def _maybe_scale(self, X: np.ndarray, timeframe: str) -> np.ndarray:
         scaler = self._scalers.get(("StandardScaler", timeframe))
@@ -230,8 +242,11 @@ class ModelInferenceService:
             # If not probabilistic, map to {0,1} and set p as 0.5 +/- epsilon
             proba = [0.9 if int(v) == 1 else 0.1 for v in y_hat]
 
-        preds = [1 if p >= 0.5 else 0 for p in proba]
-        confs = [self._confidence_from_proba(p) for p in proba]
+        # Get the threshold for this model/timeframe
+        threshold = self._get_model_threshold(model_name, timeframe)
+        
+        preds = [1 if p >= threshold else 0 for p in proba]
+        decision_margins = [self._decision_margin_from_proba(p, threshold) for p in proba]
 
         # Coverage
         coverage = {"train": 0, "inference": 0, "unsupported": 0}
@@ -243,7 +258,7 @@ class ModelInferenceService:
             except Exception:
                 cutoff = None
 
-        for ts, y, p in zip(timestamps, preds, proba):
+        for ts, y, p, dm in zip(timestamps, preds, proba, decision_margins):
             is_train: Optional[bool]
             if cutoff is None:
                 is_train = None
@@ -271,7 +286,7 @@ class ModelInferenceService:
                 timestamp=ts,
                 pred=int(y),
                 proba=float(p),
-                confidence=self._confidence_from_proba(float(p)),
+                confidence=float(dm),  # Now using decision margin instead of old confidence calc
                 is_train=is_train
             ))
 
