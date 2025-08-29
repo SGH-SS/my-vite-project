@@ -357,7 +357,7 @@ const CombinedPredictionPanel = ({
           {/* Compact metrics */}
           <div className="grid grid-cols-4 gap-2 mb-2">
             <div className={`text-center p-2 rounded text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Prob</div>
+              <div className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Prob_Up</div>
               <div className="font-semibold">{probPct}%</div>
             </div>
             <div className={`text-center p-2 rounded text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
@@ -410,7 +410,7 @@ const CombinedPredictionPanel = ({
   );
 };
 
-// Live Model Prediction Box - uses real-time model inference API
+// Live Model Prediction Box - uses real-time model inference API (Compact Version)
 const LivePredictionBox = ({
   isDarkMode,
   selectedSymbol,
@@ -425,11 +425,11 @@ const LivePredictionBox = ({
 
   // Support SPY 1D and 4H for live predictions
   const isSupported = selectedSymbol === 'spy' && (selectedTimeframe === '1d' || selectedTimeframe === '4h');
-  
+
   // Training cutoff - only show predictions for test period (2024-12-17 and after)
   const TRAIN_CUTOFF = new Date('2024-12-16T23:59:59.999Z');
   const isTestPeriod = currentCandle && new Date(currentCandle.timestamp) > TRAIN_CUTOFF;
-  
+
   const shouldShowPrediction = isSupported && isTestPeriod && currentCandle;
 
   // Fetch live prediction for current candle
@@ -443,12 +443,12 @@ const LivePredictionBox = ({
     const fetchLivePrediction = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         // Format the current candle's date for API call
         const candleDate = new Date(currentCandle.timestamp);
         const dateStr = candleDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-        
+
         // Model query param: for 4H allow selecting LightGBM_Financial or GradientBoosting
         let modelParam = '';
         if (selectedTimeframe === '4h') {
@@ -459,22 +459,22 @@ const LivePredictionBox = ({
         const response = await fetch(
           `${API_BASE_URL}/live-model-predictions/${selectedSymbol}/${selectedTimeframe}?start_date=${dateStr}&end_date=${dateStr}${modelParam}`
         );
-        
+
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
-        
+
         // Find prediction that matches current candle timestamp
         const matchingPrediction = data.predictions?.find(pred => {
           const predTime = new Date(pred.timestamp).getTime();
           const candleTime = new Date(currentCandle.timestamp).getTime();
           return Math.abs(predTime - candleTime) <= 60000; // 1 minute tolerance
         });
-        
+
         setLivePrediction(matchingPrediction || null);
-        
+
       } catch (err) {
         console.error('Error fetching live prediction:', err);
         setError(err.message);
@@ -487,20 +487,32 @@ const LivePredictionBox = ({
     fetchLivePrediction();
   }, [shouldShowPrediction, currentCandle, selectedSymbol, selectedTimeframe, selectedModel]);
 
+  // Compact header
+  const renderHeader = () => (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <h3 className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live AI Prediction</h3>
+        <span className={`text-xs px-2 py-0.5 rounded ${isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'}`}>
+          🤖 Live
+        </span>
+      </div>
+      {currentCandle && (
+        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          #{currentIndex + 1} • {new Date(currentCandle.timestamp).toLocaleDateString()}
+        </div>
+      )}
+    </div>
+  );
+
+  // Status messages (compact)
   if (!isSupported) {
     return (
-      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Prediction</h3>
-          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-            Real-time AI
-          </span>
-        </div>
-        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
-          <div className="text-sm font-medium">Live Predictions Not Available</div>
-          <div className="text-xs mt-1">
-            Live model predictions are currently only available for SPY 1D and 4H timeframes.
-            Current selection: {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
+      <div className={`rounded-lg shadow-md p-4 mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        {renderHeader()}
+        <div className={`text-xs p-3 rounded border ${isDarkMode ? 'bg-yellow-900/20 border-yellow-800 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+          <div className="font-medium">Not Available</div>
+          <div className="mt-1 opacity-90">
+            Only SPY 1D/4H supported. Current: {selectedSymbol?.toUpperCase()} {selectedTimeframe?.toUpperCase()}
           </div>
         </div>
       </div>
@@ -509,18 +521,12 @@ const LivePredictionBox = ({
 
   if (!isTestPeriod && currentCandle) {
     return (
-      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Prediction</h3>
-          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-            Real-time AI
-          </span>
-        </div>
-        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-          <div className="text-sm font-medium">Training Period Candle</div>
-          <div className="text-xs mt-1">
-            This candle ({new Date(currentCandle.timestamp).toLocaleDateString()}) is from the training period. 
-            Live predictions are only shown for test period candles (2024-12-17 and after).
+      <div className={`rounded-lg shadow-md p-4 mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        {renderHeader()}
+        <div className={`text-xs p-3 rounded border ${isDarkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+          <div className="font-medium">Training Period</div>
+          <div className="mt-1 opacity-90">
+            Predictions start 2024-12-17. This candle: {new Date(currentCandle.timestamp).toLocaleDateString()}
           </div>
         </div>
       </div>
@@ -529,14 +535,9 @@ const LivePredictionBox = ({
 
   if (!currentCandle) {
     return (
-      <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Prediction</h3>
-          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-            Real-time AI
-          </span>
-        </div>
-        <div className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>No candle selected for prediction.</div>
+      <div className={`rounded-lg shadow-md p-4 mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        {renderHeader()}
+        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>No candle selected</div>
       </div>
     );
   }
@@ -549,92 +550,74 @@ const LivePredictionBox = ({
   if (selectedTimeframe === '4h' && selectedModel === 'lgbm') threshold = 0.30;
   // Compute decision margin on-the-fly (distance from threshold)
   const liveDecisionMargin = Math.abs(prob - threshold);
-  let modelLabel = 'Gradient Boosting 1D';
+  let modelLabel = 'GB 1D';
   if (selectedTimeframe === '4h') {
-    if (selectedModel === 'lgbm') modelLabel = 'LightGBM Financial 4H';
-    else if (selectedModel === 'gb' || selectedModel === 'auto') modelLabel = 'Gradient Boosting 4H';
+    if (selectedModel === 'lgbm') modelLabel = 'LGBM 4H';
+    else if (selectedModel === 'gb' || selectedModel === 'auto') modelLabel = 'GB 4H';
   }
 
   return (
-    <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Live Prediction</h3>
-          <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'}`}>
-            Real-time AI
-          </span>
-        </div>
-        <div className="text-right">
-          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Model: {modelLabel}</div>
-          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Candle: {currentIndex + 1} • {new Date(currentCandle.timestamp).toLocaleDateString()}
-          </div>
-        </div>
-      </div>
+    <div className={`rounded-lg shadow-md p-4 mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+      {renderHeader()}
 
       {loading && (
-        <div className="flex items-center justify-center py-8">
-          <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDarkMode ? 'border-blue-400' : 'border-blue-600'}`}></div>
-          <span className={`ml-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Running AI model...</span>
+        <div className="flex items-center justify-center py-4">
+          <div className={`animate-spin rounded-full h-6 w-6 border-b-2 ${isDarkMode ? 'border-blue-400' : 'border-blue-600'}`}></div>
+          <span className={`ml-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Running model...</span>
         </div>
       )}
 
       {error && (
-        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-red-900/20 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          <div className="text-sm font-medium">Prediction Error</div>
-          <div className="text-xs mt-1">{error}</div>
+        <div className={`text-xs p-3 rounded border ${isDarkMode ? 'bg-red-900/20 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <div className="font-medium">Error</div>
+          <div className="mt-1 opacity-90">{error}</div>
         </div>
       )}
 
       {!loading && !error && !livePrediction && (
-        <div className={`rounded-md p-4 border ${isDarkMode ? 'bg-gray-900/20 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-          <div className="text-sm font-medium">No Prediction Available</div>
-          <div className="text-xs mt-1">Unable to generate prediction for this candle.</div>
+        <div className={`text-xs p-3 rounded border ${isDarkMode ? 'bg-gray-900/20 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+          <div className="font-medium">No Prediction</div>
+          <div className="mt-1 opacity-90">Unable to generate prediction for this candle</div>
         </div>
       )}
 
       {!loading && !error && livePrediction && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          {/* Compact prediction display */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
             {selectedTimeframe === '4h' && (
               <div>
                 <label className={`block text-xs font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Model</label>
                 <select
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  className={`w-full text-sm rounded px-2 py-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+                  className={`w-full text-xs rounded px-2 py-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
                 >
-                  <option value="auto">Auto (Default)</option>
-                  <option value="gb">Gradient Boosting 4H</option>
-                  <option value="lgbm">LightGBM Financial 4H</option>
+                  <option value="auto">Auto</option>
+                  <option value="gb">GB 4H</option>
+                  <option value="lgbm">LGBM 4H</option>
                 </select>
               </div>
             )}
-            <div className={`col-span-2 md:col-span-2 flex items-center justify-center rounded-lg py-6 font-bold text-2xl ${
+            <div className={`flex items-center justify-center rounded py-3 font-bold text-xl ${
               direction === 'UP' ? 'bg-green-600/10 text-green-400' : 'bg-red-600/10 text-red-400'
             }`}>
-              🤖 {direction}
+              {direction}
             </div>
-            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Probability</div>
-              <div className="font-semibold text-lg">{probPct}%</div>
+            <div className={`rounded p-2 text-center ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Prob_Up</div>
+              <div className="font-semibold">{probPct}%</div>
             </div>
-            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Decision Margin</div>
-              <div className="font-semibold text-lg">{liveDecisionMargin.toFixed(4)}</div>
-            </div>
-            <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Threshold</div>
-              <div className="font-semibold text-lg">{threshold}</div>
+            <div className={`rounded p-2 text-center ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Margin</div>
+              <div className="font-semibold">{liveDecisionMargin.toFixed(3)}</div>
             </div>
           </div>
 
-          <div className={`font-mono text-xs p-3 rounded ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-            🤖 Live: pred={direction} p_up={prob.toFixed(4)} thr={threshold} margin={liveDecisionMargin.toFixed(4)} • {new Date(livePrediction.timestamp).toLocaleString()}
-          </div>
-
-          <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            ⚡ This prediction was generated in real-time using the live {modelLabel} inference engine.
+          {/* Compact info bar */}
+          <div className={`text-xs p-2 rounded flex items-center justify-between ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+            <span>{modelLabel} • Thr: {threshold}</span>
+            <span>{new Date(livePrediction.timestamp).toLocaleString()}</span>
           </div>
         </>
       )}
