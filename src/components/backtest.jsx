@@ -421,6 +421,7 @@ const LivePredictionBox = ({
   const [livePrediction, setLivePrediction] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedModel, setSelectedModel] = useState('auto');
 
   // Support SPY 1D and 4H for live predictions
   const isSupported = selectedSymbol === 'spy' && (selectedTimeframe === '1d' || selectedTimeframe === '4h');
@@ -448,8 +449,15 @@ const LivePredictionBox = ({
         const candleDate = new Date(currentCandle.timestamp);
         const dateStr = candleDate.toISOString().split('T')[0]; // YYYY-MM-DD format
         
+        // Model query param: for 4H allow selecting LightGBM_Financial or GradientBoosting
+        let modelParam = '';
+        if (selectedTimeframe === '4h') {
+          if (selectedModel === 'gb') modelParam = '&model=GradientBoosting';
+          else if (selectedModel === 'lgbm') modelParam = '&model=LightGBM_Financial';
+        }
+
         const response = await fetch(
-          `${API_BASE_URL}/live-model-predictions/${selectedSymbol}/${selectedTimeframe}?start_date=${dateStr}&end_date=${dateStr}`
+          `${API_BASE_URL}/live-model-predictions/${selectedSymbol}/${selectedTimeframe}?start_date=${dateStr}&end_date=${dateStr}${modelParam}`
         );
         
         if (!response.ok) {
@@ -477,7 +485,7 @@ const LivePredictionBox = ({
     };
 
     fetchLivePrediction();
-  }, [shouldShowPrediction, currentCandle, selectedSymbol, selectedTimeframe]);
+  }, [shouldShowPrediction, currentCandle, selectedSymbol, selectedTimeframe, selectedModel]);
 
   if (!isSupported) {
     return (
@@ -536,11 +544,16 @@ const LivePredictionBox = ({
   const direction = livePrediction?.prediction === 1 ? 'UP' : 'DOWN';
   const prob = livePrediction?.probability || 0;
   const probPct = (prob * 100).toFixed(1);
-  // Thresholds per timeframe
-  const threshold = selectedTimeframe === '4h' ? 0.50 : 0.57;
+  // Thresholds per timeframe and model
+  let threshold = selectedTimeframe === '4h' ? 0.50 : 0.57;
+  if (selectedTimeframe === '4h' && selectedModel === 'lgbm') threshold = 0.30;
   // Compute decision margin on-the-fly (distance from threshold)
   const liveDecisionMargin = Math.abs(prob - threshold);
-  const modelLabel = selectedTimeframe === '4h' ? 'Gradient Boosting 4H' : 'Gradient Boosting 1D';
+  let modelLabel = 'Gradient Boosting 1D';
+  if (selectedTimeframe === '4h') {
+    if (selectedModel === 'lgbm') modelLabel = 'LightGBM Financial 4H';
+    else if (selectedModel === 'gb' || selectedModel === 'auto') modelLabel = 'Gradient Boosting 4H';
+  }
 
   return (
     <div className={`rounded-lg shadow-md p-6 mb-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -583,6 +596,20 @@ const LivePredictionBox = ({
       {!loading && !error && livePrediction && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            {selectedTimeframe === '4h' && (
+              <div>
+                <label className={`block text-xs font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Model</label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className={`w-full text-sm rounded px-2 py-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+                >
+                  <option value="auto">Auto (Default)</option>
+                  <option value="gb">Gradient Boosting 4H</option>
+                  <option value="lgbm">LightGBM Financial 4H</option>
+                </select>
+              </div>
+            )}
             <div className={`col-span-2 md:col-span-2 flex items-center justify-center rounded-lg py-6 font-bold text-2xl ${
               direction === 'UP' ? 'bg-green-600/10 text-green-400' : 'bg-red-600/10 text-red-400'
             }`}>

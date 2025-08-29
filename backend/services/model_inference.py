@@ -83,17 +83,31 @@ class ModelInferenceService:
                 self._models[key] = None
 
         # Optional scalers if present, look in specific model directories
-        scaler_paths = {
-            "1d": models_dir / "gb_1d_versionlock" / "scaler_1d.joblib",
-            # Use the exact 4H scaler artifact name present in repo
-            "4h": models_dir / "gb_4h" / "scaler_4h_w2_style.joblib",
+        # Store scalers keyed by (scaler_name, timeframe) and also (scaler_name, timeframe, model_name)
+        # so model-specific scalers can be preferred.
+        generic_scalers = {
+            ("StandardScaler", "1d"): models_dir / "gb_1d_versionlock" / "scaler_1d.joblib",
+            ("StandardScaler", "4h"): models_dir / "gb_4h" / "scaler_4h_w2_style.joblib",
         }
-        
-        for tf, scaler_path in scaler_paths.items():
+        model_specific_scalers = {
+            # LightGBM 4H specific scaler
+            ("StandardScaler", "4h", "LightGBM_Financial"): models_dir / "lgbm_4h" / "scaler_4h_only.joblib",
+        }
+
+        # Load generic scalers
+        for key, scaler_path in generic_scalers.items():
             if scaler_path.exists():
                 try:
-                    self._scalers[("StandardScaler", tf)] = joblib.load(str(scaler_path))
-                except Exception:  # pragma: no cover
+                    self._scalers[key] = joblib.load(str(scaler_path))
+                except Exception:
+                    pass
+
+        # Load model-specific scalers
+        for key, scaler_path in model_specific_scalers.items():
+            if scaler_path.exists():
+                try:
+                    self._scalers[key] = joblib.load(str(scaler_path))
+                except Exception:
                     pass
 
     def model_available(self, model_name: str, timeframe: str) -> bool:
@@ -198,8 +212,13 @@ class ModelInferenceService:
         }
         return threshold_map.get((model_name, timeframe), 0.5)  # Default to 0.5 if not found
 
-    def _maybe_scale(self, X: np.ndarray, timeframe: str) -> np.ndarray:
-        scaler = self._scalers.get(("StandardScaler", timeframe))
+    def _maybe_scale(self, X: np.ndarray, timeframe: str, model_name: Optional[str] = None) -> np.ndarray:
+        # Prefer model-specific scaler if available
+        scaler = None
+        if model_name is not None:
+            scaler = self._scalers.get(("StandardScaler", timeframe, model_name))
+        if scaler is None:
+            scaler = self._scalers.get(("StandardScaler", timeframe))
         if scaler is None:
             return X
         try:
@@ -231,7 +250,7 @@ class ModelInferenceService:
         X = np.vstack(X_list) if X_list else np.zeros((0, 16), dtype=float)
 
         # Optional scaling
-        X_scaled = self._maybe_scale(X, timeframe)
+        X_scaled = self._maybe_scale(X, timeframe, model_name)
 
         # Predict
         try:
