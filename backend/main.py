@@ -11,6 +11,7 @@ from datetime import datetime
 from config import settings
 from database import test_connection, engine
 from routers import trading
+from routers import pipeline
 
 # Set up logging
 logging.basicConfig(
@@ -50,6 +51,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(trading.router)
+app.include_router(pipeline.router)
 
 @app.on_event("startup")
 async def startup_event():

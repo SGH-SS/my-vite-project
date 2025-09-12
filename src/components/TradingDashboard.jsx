@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import TradingChartDashboard from './Chart.jsx';
 import BacktestDashboard from './backtest.jsx';
 import TradingLLMDashboard from './LLMDashboard.jsx';
+import PipelineDashboard from './PipelineDashboard.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
@@ -2945,7 +2946,7 @@ const TradingDashboard = () => {
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, currentPage]);
 
   // Dashboard mode is local to each tab (not shared)
-  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', or 'llm'
+  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', 'backtest', 'llm', 'pipeline'
 
   // Local state that doesn't need to be shared across tabs
   const [stats, setStats] = useState(null);
@@ -3704,6 +3705,21 @@ const TradingDashboard = () => {
                   <span>🤖</span>
                   <span>LLM Dashboard</span>
                 </button>
+                <button
+                  onClick={() => setDashboardMode('pipeline')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
+                    dashboardMode === 'pipeline'
+                      ? isDarkMode
+                        ? 'bg-gray-700 text-blue-400 shadow-sm ring-1 ring-blue-500/50'
+                        : 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-200'
+                      : isDarkMode
+                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>⚙️</span>
+                  <span>Pipeline Dashboard</span>
+                </button>
               </div>
             </div>
           </div>
@@ -3743,6 +3759,8 @@ const TradingDashboard = () => {
             tables={tables}
             isDarkMode={isDarkMode}
           />
+        ) : dashboardMode === 'pipeline' ? (
+          <PipelineDashboard isDarkMode={isDarkMode} />
         ) : (
           <>
             {/* Original Data Dashboard Content */}

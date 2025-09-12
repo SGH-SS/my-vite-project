@@ -9,6 +9,7 @@ import ThemeToggle from './components/shared/ThemeToggle';
 // Modular Dashboard Components
 import DataDashboard from './components/data-dashboard/DataDashboard';
 import VectorDashboard from './components/vector-dashboard/VectorDashboard';
+import PipelineDashboard from './components/PipelineDashboard';
 
 // Original Monolithic Dashboard Component
 import OriginalTradingDashboard from './components/TradingDashboard';
@@ -99,6 +100,20 @@ function App() {
                     >
                       🧮 Vectors
                     </button>
+                    <button
+                      onClick={() => setDashboardMode('pipeline')}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                        dashboardMode === 'pipeline'
+                          ? isDarkMode
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white text-blue-600 shadow-sm'
+                          : isDarkMode
+                            ? 'text-gray-300 hover:text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      ⚙️ Pipeline
+                    </button>
                   </div>
                 )}
                 
@@ -157,11 +172,11 @@ function App() {
             <OriginalTradingDashboard />
           ) : (
             /* Modular Dashboard */
-            dashboardMode === DASHBOARD_MODES.DATA ? (
-              <DataDashboard isDarkMode={isDarkMode} />
-            ) : (
-              <VectorDashboard isDarkMode={isDarkMode} />
-            )
+            dashboardMode === DASHBOARD_MODES.DATA
+              ? <DataDashboard isDarkMode={isDarkMode} />
+              : dashboardMode === DASHBOARD_MODES.VECTOR
+                ? <VectorDashboard isDarkMode={isDarkMode} />
+                : <PipelineDashboard isDarkMode={isDarkMode} />
           )}
         </main>
       </div>
