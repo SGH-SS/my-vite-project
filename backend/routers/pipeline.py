@@ -49,6 +49,25 @@ PIPELINE_SCRIPTS: Dict[str, PipelineScript] = {
         description="Runs 43_run_eurusd_full_pipeline.py to refresh all EURUSD tables",
         bat_path=r"C:\Users\sham\Documents\agentic trading system\mcp\run_pipeline_eurusd_full.bat",
     ),
+    # Vector generation launchers (per symbol)
+    "spy_vectors": PipelineScript(
+        key="spy_vectors",
+        title="Generate SPY Vectors",
+        description="Compute and backfill missing vector columns for SPY fronttest tables",
+        bat_path=r"C:\Users\sham\Documents\agentic trading system\mcp\run_vectors_spy.bat",
+    ),
+    "es_vectors": PipelineScript(
+        key="es_vectors",
+        title="Generate ES Vectors",
+        description="Compute and backfill missing vector columns for ES fronttest tables",
+        bat_path=r"C:\Users\sham\Documents\agentic trading system\mcp\run_vectors_es.bat",
+    ),
+    "eurusd_vectors": PipelineScript(
+        key="eurusd_vectors",
+        title="Generate EURUSD Vectors",
+        description="Compute and backfill missing vector columns for EURUSD fronttest tables",
+        bat_path=r"C:\Users\sham\Documents\agentic trading system\mcp\run_vectors_eurusd.bat",
+    ),
 }
 
 

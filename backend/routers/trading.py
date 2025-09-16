@@ -229,6 +229,41 @@ async def get_timeframes():
         "count": len(TimeFrame)
     }
 
+@router.get("/hybrid/{symbol}/{timeframe}", summary="Get hybrid backtest+fronttest data (ascending)")
+async def get_hybrid_data(
+    symbol: str,
+    timeframe: str,
+    limit: int = Query(default=10000, ge=1, le=100000, description="Max candles to return from combined data"),
+    start_date: Optional[datetime] = Query(default=None, description="Start date (ISO)"),
+    end_date: Optional[datetime] = Query(default=None, description="End date (ISO)"),
+    include_vectors: bool = Query(default=False, description="Include vector columns"),
+    db: Session = Depends(get_db)
+):
+    """
+    Return a seamless ascending sequence that spans backtest then fronttest tables for the
+    given symbol/timeframe. If the last candle in backtest equals the first candle in
+    fronttest, we keep only the fronttest copy at the boundary. Response matches the
+    TradingDataResponse shape, with an additional 'sources' array alongside to map each row
+    to its origin schema.
+    """
+    try:
+        symbol = symbol.lower()
+        timeframe = timeframe.lower()
+        result = trading_service.get_hybrid_backtest_fronttest(
+            db=db,
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+            include_vectors=include_vectors,
+            order="asc"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error getting hybrid data for {symbol}_{timeframe}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/search/{symbol}/{timeframe}", response_model=List[TradingDataPoint], summary="Search by date range")
 async def search_by_date_range(
     symbol: str,
@@ -484,7 +519,8 @@ async def get_live_model_predictions(
     start_date: str,
     end_date: str,
     order: str = "asc",
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    db: Session = Depends(get_db)
 ):
     """
     Get live model predictions for a symbol/timeframe using loaded ML models
@@ -551,47 +587,36 @@ async def get_live_model_predictions(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD or ISO format")
         
-        # Get database connection
-        db = next(get_db())
-        
-        # Fetch data from the database using the same logic as other endpoints
-        table_name = f"{symbol}_{timeframe}"
+        # Fetch candles using hybrid service (spans backtest then fronttest)
         try:
-            # Check if table exists
-            result = db.execute(text(f"""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'backtest' 
-                    AND table_name = '{table_name}'
-                );
-            """))
-            table_exists = result.scalar()
-            
-            if not table_exists:
-                raise HTTPException(status_code=404, detail=f"Table {table_name} not found")
-            
-            # Fetch the data with all required columns for model inference
-            query = text(f"""
-                SELECT 
-                    timestamp,
-                    open, high, low, close, volume,
-                    raw_ohlcv_vec,
-                    iso_ohlc,
-                    future
-                FROM backtest.{table_name}
-                WHERE timestamp >= :start_date 
-                AND timestamp <= :end_date
-                ORDER BY timestamp {order.upper()}
-            """)
-            
-            result = db.execute(query, {
-                "start_date": start_dt,
-                "end_date": end_dt
-            })
-            
-            rows = result.fetchall()
-            
-            if not rows:
+            hybrid = trading_service.get_hybrid_backtest_fronttest(
+                db=db,
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=10000,
+                start_date=start_dt,
+                end_date=end_dt,
+                include_vectors=True,
+                order="asc"
+            )
+
+            data_rows = []
+            for candle in hybrid.get("data", []):
+                # candle is a Pydantic TradingDataPoint
+                c = candle.dict() if hasattr(candle, "dict") else candle
+                data_rows.append({
+                    "timestamp": c.get("timestamp").isoformat() if c.get("timestamp") else None,
+                    "open": float(c.get("open") or 0.0),
+                    "high": float(c.get("high") or 0.0),
+                    "low": float(c.get("low") or 0.0),
+                    "close": float(c.get("close") or 0.0),
+                    "volume": float(c.get("volume") or 0.0),
+                    "raw_ohlcv_vec": c.get("raw_ohlcv_vec"),
+                    "iso_ohlc": c.get("iso_ohlc"),
+                    "future": c.get("future") if "future" in c else None
+                })
+
+            if not data_rows:
                 return {
                     "symbol": symbol.upper(),
                     "timeframe": timeframe,
@@ -602,23 +627,7 @@ async def get_live_model_predictions(
                     "coverage": {"train": 0, "inference": 0, "unsupported": 0},
                     "total_predictions": 0
                 }
-            
-            # Convert rows to the format expected by model_inference_service
-            data_rows = []
-            for row in rows:
-                row_dict = {
-                    "timestamp": row.timestamp.isoformat() if row.timestamp else None,
-                    "open": float(row.open) if row.open is not None else 0.0,
-                    "high": float(row.high) if row.high is not None else 0.0,
-                    "low": float(row.low) if row.low is not None else 0.0,
-                    "close": float(row.close) if row.close is not None else 0.0,
-                    "volume": float(row.volume) if row.volume is not None else 0.0,
-                    "raw_ohlcv_vec": row.raw_ohlcv_vec,  # Vector column
-                    "iso_ohlc": row.iso_ohlc,  # Vector column  
-                    "future": row.future  # Target label (may be None for future data)
-                }
-                data_rows.append(row_dict)
-            
+
             # Run predictions using the model inference service
             # Set train_cutoff to distinguish between historical (train) and recent (inference) data
             # For live predictions, we typically consider anything recent as "inference"

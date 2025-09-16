@@ -907,16 +907,10 @@ const DataSelectionControls = ({ handleRefresh, isDarkMode }) => {
 
 // Main Backtest Dashboard component
 const BacktestDashboard = ({ isDarkMode = false }) => {
-  const {
-    selectedSymbol,
-    selectedTimeframe,
-    rowLimit,
-    sortOrder,
-    fetchMode,
-    dateRangeType,
-    startDate,
-    endDate
-  } = useTrading();
+  // Local-only controls for Backtest Dashboard
+  const btSymbol = 'spy';
+  const [btTimeframe, setBtTimeframe] = useState('1d'); // '1d' | '4h'
+  const BT_START_ISO = '2024-12-01T00:00:00.000Z';
 
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -926,6 +920,12 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
   const [error, setError] = useState(null);
   const [chartData, setChartData] = useState(null); // full payload from API
   const fullData = chartData?.data || [];
+  const sourceByIndex = useMemo(() => {
+    // Backend returns optional `sources` aligned with data; if absent, infer all 'backtest'
+    const sources = chartData?.sources;
+    if (Array.isArray(sources) && sources.length === fullData.length) return sources;
+    return fullData.map(() => 'backtest');
+  }, [chartData, fullData.length]);
 
   // Backtest state
   const [currentIndex, setCurrentIndex] = useState(0); // inclusive index of latest happened candle
@@ -1098,35 +1098,16 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
     return () => clearTimeout(id);
   }, [isPlaying, speedMs, currentIndex, fullData.length, loopPlayback]);
 
-  // Fetch chart data (mirrors Chart.jsx logic)
+  // Fetch chart data using hybrid route spanning backtest→fronttest starting at fixed date
   const fetchChartData = useCallback(async () => {
     setLoading(true);
     setError(null);
     setChartData(null);
     try {
-      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
+      const url = `${API_BASE_URL}/hybrid/${btSymbol}/${btTimeframe}`;
       const queryParams = new URLSearchParams();
-
-      if (fetchMode === FETCH_MODES.DATE_RANGE) {
-        switch (dateRangeType) {
-          case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
-            if (endDate) queryParams.append('end_date', endDate);
-            break;
-          case DATE_RANGE_TYPES.DATE_TO_DATE:
-            if (startDate) queryParams.append('start_date', startDate);
-            if (endDate) queryParams.append('end_date', endDate);
-            break;
-          case DATE_RANGE_TYPES.DATE_TO_LATEST:
-            if (startDate) queryParams.append('start_date', startDate);
-            break;
-        }
-        queryParams.append('limit', '10000');
-      } else {
-        queryParams.append('limit', String(rowLimit));
-      }
-
-      queryParams.append('order', sortOrder || 'desc');
-      queryParams.append('sort_by', 'timestamp');
+      queryParams.append('start_date', BT_START_ISO);
+      queryParams.append('limit', '100000');
 
       const response = await fetch(`${url}?${queryParams.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1145,22 +1126,22 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, fetchMode, dateRangeType, startDate, endDate]);
+  }, [btSymbol, btTimeframe]);
 
-  // Fetch on inputs change
+  // Auto-load on mount and when timeframe changes
   useEffect(() => {
-    if (selectedSymbol && selectedTimeframe) fetchChartData();
+    fetchChartData();
     // Cleanup chart resize listener on unmount
     return () => {
       if (chartRef.current?._onResize) window.removeEventListener('resize', chartRef.current._onResize);
       if (chartRef.current) try { chartRef.current.remove(); } catch {}
     };
-  }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, fetchMode, dateRangeType, startDate, endDate, fetchChartData]);
+  }, [btTimeframe, fetchChartData]);
 
   // Header info
   const headerBadge = (
     <div className={`mt-4 text-sm rounded p-2 ${isDarkMode ? 'bg-black/30' : 'bg-white/20'}`}>
-      🧪 Backtest • {selectedSymbol?.toUpperCase()} • {selectedTimeframe} • {fullData.length} candles loaded
+      🧪 Backtest • {btSymbol.toUpperCase()} • {btTimeframe} • {fullData.length} candles loaded (from {new Date('2024-12-01').toLocaleDateString()})
     </div>
   );
 
@@ -1197,8 +1178,50 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
         {headerBadge}
       </div>
 
-      {/* Data selection & controls */}
-      <DataSelectionControls handleRefresh={fetchChartData} isDarkMode={isDarkMode} />
+      {/* Backtest-only Data Selection & Controls */}
+      <div className={`rounded-lg shadow-md p-6 mb-6 transition-colors duration-200 ${
+        isDarkMode ? 'bg-gray-800' : 'bg-white'
+      }`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Data Selection & Controls (Backtest)
+          </h3>
+          <button
+            onClick={fetchChartData}
+            className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
+              isDarkMode ? 'bg-blue-800 hover:bg-blue-700 text-blue-300' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+            }`}
+          >
+            🔄 Reload
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Symbol</label>
+            <select value={btSymbol} disabled className={`w-full rounded-md px-3 py-2 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-gray-100 text-gray-900'}`}>
+              <option value="spy">SPY</option>
+            </select>
+          </div>
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Timeframe</label>
+            <select
+              value={btTimeframe}
+              onChange={(e) => setBtTimeframe(e.target.value)}
+              className={`w-full rounded-md px-3 py-2 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-900'}`}
+            >
+              <option value="1d">1 Day (from 12/01/2024)</option>
+              <option value="4h">4 Hours (from 12/01/2024)</option>
+            </select>
+          </div>
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Start Date</label>
+            <input type="date" value="2024-12-01" disabled className={`w-full rounded-md px-3 py-2 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-300 bg-gray-100 text-gray-900'}`} />
+          </div>
+        </div>
+        <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          This dashboard will load SPY {btTimeframe.toUpperCase()} candles starting from 12/01/2024, spanning Backtest and Fronttest automatically.
+        </div>
+      </div>
 
       {/* Backtest settings */}
       <BacktestSettings
@@ -1219,8 +1242,8 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       {/* Live Model Prediction Box */}
       <LivePredictionBox
         isDarkMode={isDarkMode}
-        selectedSymbol={selectedSymbol}
-        selectedTimeframe={selectedTimeframe}
+        selectedSymbol={btSymbol}
+        selectedTimeframe={btTimeframe}
         currentCandle={currentCandle}
         currentIndex={currentIndex}
       />
@@ -1260,18 +1283,37 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
               style={{ minHeight: '400px' }}
             />
           )}
+          {/* Source indicator below chart */}
+          {!loading && !error && fullData.length > 0 && (
+            <div className={`mt-3 text-sm px-3 py-2 rounded inline-flex items-center gap-2 ${
+              isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-700'
+            }`}>
+              <span>Data source:</span>
+              {(() => {
+                const src = sourceByIndex[Math.min(Math.max(currentIndex,0), Math.max(fullData.length-1,0))];
+                const isFront = src === 'fronttest';
+                return (
+                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                    isFront ? (isDarkMode ? 'bg-green-900/40 text-green-300' : 'bg-green-100 text-green-700')
+                           : (isDarkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700')
+                  }`}>
+                    {isFront ? 'FRONTTEST' : 'BACKTEST'}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Combined Model Predictions */}
       <CombinedPredictionPanel
         isDarkMode={isDarkMode}
-        selectedSymbol={selectedSymbol}
-        selectedTimeframe={selectedTimeframe}
+        selectedSymbol={btSymbol}
+        selectedTimeframe={btTimeframe}
         currentIndex={currentIndex}
         setCurrentIndex={setCurrentIndex}
         fullData={fullData}
-
       />
     </div>
   );

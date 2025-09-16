@@ -60,6 +60,11 @@ export default function PipelineDashboard({ isDarkMode = false }) {
     return [byKey.spy_full, byKey.es_full, byKey.eurusd_full].filter(Boolean);
   }, [scripts]);
 
+  const vectorLaunchers = useMemo(() => {
+    const byKey = Object.fromEntries((scripts || []).map(s => [s.key, s]));
+    return [byKey.spy_vectors, byKey.es_vectors, byKey.eurusd_vectors].filter(Boolean);
+  }, [scripts]);
+
   const runKey = async (key) => {
     try {
       setBusyKey(key);
@@ -164,6 +169,28 @@ export default function PipelineDashboard({ isDarkMode = false }) {
             Update fronttest tables via reproducible scripts launched in an Anaconda prompt.
           </p>
         </div>
+
+        {/* Vector Generation Buttons */}
+        {vectorLaunchers.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {vectorLaunchers.map(s => (
+              <div key={s.key} className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl p-5 shadow-sm`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">🧮 {s.title}</h3>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{s.description}</p>
+                  </div>
+                  <Button 
+                    label={busyKey === s.key ? 'Starting…' : `Run`}
+                    onClick={() => runKey(s.key)}
+                    disabled={busyKey !== null}
+                    tone="primary"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Big 3 Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

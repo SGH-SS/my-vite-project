@@ -20,6 +20,7 @@ class TradingDataService:
     
     def __init__(self):
         self.schema = settings.SCHEMA
+        self.fronttest_schema = getattr(settings, 'FRONTTEST_SCHEMA', 'fronttest')
         self.models_schema = getattr(settings, 'MODELS_SCHEMA', 'v1_models')
 
     # -----------------------------
@@ -305,6 +306,143 @@ class TradingDataService:
         except SQLAlchemyError as e:
             logger.error(f"Error fetching trading data for {table_name}: {e}")
             raise
+
+    def get_hybrid_backtest_fronttest(
+        self,
+        db: Session,
+        symbol: str,
+        timeframe: str,
+        limit: int = 1000,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        include_vectors: bool = False,
+        order: str = "asc"
+    ) -> Dict[str, Any]:
+        """Return a seamless sequence that spans backtest then fronttest with de-dup on boundary.
+
+        - Always sorted ascending by timestamp for deterministic playback.
+        - When both schemas contain the boundary candle, keep the fronttest copy only.
+        - Adds source field: 'backtest' | 'fronttest'.
+        """
+        table_name = f"{symbol}_{timeframe}"
+
+        # Determine columns from backtest first; if missing, fall back to fronttest
+        def available_columns_for(schema: str) -> List[str]:
+            try:
+                q = text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema AND table_name = :table
+                    ORDER BY ordinal_position
+                    """
+                )
+                rows = db.execute(q, {"schema": schema, "table": table_name}).fetchall()
+                return [r[0] for r in rows]
+            except Exception:
+                return []
+
+        bt_cols = available_columns_for(self.schema)
+        ft_cols = available_columns_for(self.fronttest_schema)
+
+        base_columns = ["symbol", "timestamp", "open", "high", "low", "close", "volume"]
+        vector_patterns = ['_vec', 'BERT_', 'norm_', 'raw_ohlc', 'raw_ohlcv', 'iso_']
+
+        def select_list(cols: List[str]) -> List[str]:
+            if not cols:
+                return base_columns
+            selected = [c for c in base_columns if c in cols]
+            if include_vectors:
+                for c in cols:
+                    if any(p in c for p in vector_patterns) and c not in selected:
+                        selected.append(c)
+            return selected
+
+        bt_select = select_list(bt_cols)
+        ft_select = select_list(ft_cols)
+
+        def fetch(schema: str, columns: List[str]) -> List[Dict[str, Any]]:
+            if not columns:
+                return []
+            select_clause = ", ".join([f'"{c}"' for c in columns])
+            where_conditions = []
+            params: Dict[str, Any] = {}
+            if start_date:
+                where_conditions.append("timestamp >= :start_date")
+                params["start_date"] = start_date
+            if end_date:
+                where_conditions.append("timestamp <= :end_date")
+                params["end_date"] = end_date
+            where_clause = ("WHERE " + " AND ".join(where_conditions)) if where_conditions else ""
+            q = text(f"""
+                SELECT {select_clause}
+                FROM {schema}."{table_name}"
+                {where_clause}
+                ORDER BY "timestamp" ASC
+            """)
+            rows = db.execute(q, params).fetchall()
+            out: List[Dict[str, Any]] = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                # Ensure symbol is string lower
+                if 'symbol' in row_dict and row_dict['symbol']:
+                    try:
+                        row_dict['symbol'] = str(row_dict['symbol']).lower()
+                    except Exception:
+                        pass
+                # Parse vectors if needed (string → list)
+                if include_vectors:
+                    for c in list(row_dict.keys()):
+                        if any(p in c for p in vector_patterns) and isinstance(row_dict[c], str):
+                            try:
+                                import ast
+                                row_dict[c] = ast.literal_eval(row_dict[c])
+                            except Exception:
+                                row_dict[c] = None
+                out.append(row_dict)
+            return out
+
+        bt_rows = fetch(self.schema, bt_select)
+        ft_rows = fetch(self.fronttest_schema, ft_select)
+
+        # De-duplicate boundary: if the last backtest timestamp equals the first fronttest timestamp,
+        # drop the backtest one to prefer fronttest
+        if bt_rows and ft_rows:
+            bt_last_ts = bt_rows[-1].get('timestamp')
+            ft_first_ts = ft_rows[0].get('timestamp')
+            try:
+                # Normalize for comparison in case of tz-aware
+                if bt_last_ts == ft_first_ts:
+                    bt_rows = bt_rows[:-1]
+            except Exception:
+                pass
+
+        # Tag source
+        for r in bt_rows:
+            r['source'] = 'backtest'
+        for r in ft_rows:
+            r['source'] = 'fronttest'
+
+        merged = bt_rows + ft_rows
+
+        # Enforce ascending order
+        merged.sort(key=lambda x: x.get('timestamp'))
+
+        # Apply optional limit at the end (acts on combined sequence)
+        if limit is not None:
+            merged = merged[:limit]
+
+        # Build response compatible with TradingDataResponse
+        # Include 'source' as an extra field (TradingDataPoint allows extra)
+        data_points = [TradingDataPoint(**row) for row in merged]
+        return {
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'count': len(data_points),
+            'data': data_points,
+            'total_count': len(data_points),
+            'sources': [row.get('source') for row in merged]
+        }
 
     def get_latest_data_point(self, db: Session, symbol: str, timeframe: str) -> Optional[TradingDataPoint]:
         """Get the most recent data point for a symbol/timeframe"""
