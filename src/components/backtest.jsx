@@ -1040,6 +1040,9 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
     };
     window.addEventListener('resize', onResize);
     chart._onResize = onResize;
+
+    // Guard against operating on disposed chart by tracking a token
+    chart._alive = true;
   }, [visibleCandles, isDarkMode, fullData, currentIndex]);
 
   // Update chart data when visibleCandles changes
@@ -1048,7 +1051,13 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       initializeChart();
       return;
     }
-    priceSeriesRef.current.setData(visibleCandles);
+    try {
+      priceSeriesRef.current.setData(visibleCandles);
+    } catch (e) {
+      // Series may belong to a disposed chart (e.g., timeframe switch). Recreate chart.
+      initializeChart();
+      try { priceSeriesRef.current && priceSeriesRef.current.setData(visibleCandles); } catch {}
+    }
     
     // Update the visible time range when current index changes
     if (chartRef.current && fullData.length > 0) {
@@ -1072,10 +1081,12 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       const endTime = fullData[endIndex]?.timestamp;
       
       if (startTime && endTime) {
-        chartRef.current.timeScale().setVisibleRange({
-          from: Math.floor(new Date(startTime).getTime() / 1000),
-          to: Math.floor(new Date(endTime).getTime() / 1000)
-        });
+        try {
+          chartRef.current.timeScale().setVisibleRange({
+            from: Math.floor(new Date(startTime).getTime() / 1000),
+            to: Math.floor(new Date(endTime).getTime() / 1000)
+          });
+        } catch {}
       }
     }
   }, [visibleCandles, initializeChart, currentIndex, fullData]);
@@ -1102,6 +1113,13 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
   const fetchChartData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Dispose existing chart synchronously before data swap to avoid using a dead instance
+    if (chartRef.current) {
+      try { chartRef.current.remove(); } catch {}
+      chartRef.current = null;
+      priceSeriesRef.current = null;
+      if (chartRef.current?._onResize) window.removeEventListener('resize', chartRef.current._onResize);
+    }
     setChartData(null);
     try {
       const url = `${API_BASE_URL}/hybrid/${btSymbol}/${btTimeframe}`;
