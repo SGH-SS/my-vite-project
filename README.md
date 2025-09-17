@@ -2,17 +2,17 @@
 
 ## Overview
 
-**Daygent** is a sophisticated agentic trading intelligence platform that combines traditional market analysis with cutting-edge AI and machine learning technologies. The system features **four integrated dashboards** within a monolithic architecture for comprehensive data analysis, vector intelligence, professional charting, and AI-powered market insights.
+**Daygent** is a sophisticated agentic trading intelligence platform that combines traditional market analysis with cutting-edge AI and machine learning technologies. The system features **six integrated dashboards** within a monolithic architecture for comprehensive data analysis, vector intelligence, professional charting, historical backtesting playback with model predictions, pipeline orchestration, and AI-powered market insights.
 
 ## 🚀 Architecture & Current Status
 
 ### **Monolithic Implementation** (Currently Active)
-- **Main Component**: `TradingDashboard.jsx` (4,329 lines) - Contains all four dashboards
+- **Main Component**: `TradingDashboard.jsx` (4,329 lines) - Contains all six dashboards
 - **Architecture Support**: Both monolithic and modular modes available via `App.jsx`
 - **Current Mode**: You are **NOT using the modular structure** - the system runs in monolithic mode
-- **Dashboard Integration**: Four dashboards seamlessly integrated within single component
+- **Dashboard Integration**: Six dashboards seamlessly integrated within single component
 
-### **Four Integrated Dashboards**
+### **Six Integrated Dashboards**
 
 #### 📊 **1. Data Dashboard**
 - **Real-time OHLCV Data**: Advanced filtering, pagination, and search capabilities
@@ -40,12 +40,28 @@
 - **Labels Integration**: 🏷️ Trading labels display (tjr_high/tjr_low indicators)
 - **Real-time Updates**: Synchronized with data dashboard selections
 - **Keyboard Shortcuts**: Escape to exit, Delete to clear selection
+  - **Game Mode (🎮)**: Full-screen chart navigation with independent key processing (W/A/S/D pan, Shift/Space zoom, Q/E X-scale, Z/C Y-scale, Esc exit)
 
 #### 🤖 **4. LLM Dashboard (AI Assistant)**
 - **Chat Interface**: Complete framework for AI integration (ready for GPT-4/Claude)
 - **Mock Analysis**: Comprehensive UI for trading insights and market intelligence
 - **Dynamic Mini Dashboard**: Resizable component display system
 - **AI-Ready Framework**: Backend integration points for real AI models
+
+#### 🧪 **5. Backtest Dashboard**
+- **Hybrid Data Playback**: Seamlessly replays ascending candles spanning `backtest` → `fronttest` with boundary de-duplication
+- **Playback Controls**: Play/Pause, speed, step size, loop; “Happened vs Coming” candle visualization
+- **Source Indicator**: Per-candle badge for backtest/fronttest origin
+- **Model Integration**: Compact per-candle prediction display from DB-backed results + Live inference box (SPY 1D/4H, test period gated)
+- **API**: Uses `GET /api/trading/hybrid/{symbol}/{timeframe}` (ascending, sources) and model endpoints listed below
+
+#### ⚙️ **6. Pipeline Dashboard**
+- **Windows Orchestration**: Launches TradingView scraping and table refresh via `.bat` scripts in a detached console (Conda env activation expected)
+- **Big 3 Launchers**: Full updates for SPY, ES, and EURUSD fronttest tables
+- **Vector Launchers**: Per-symbol vector generation/backfill
+- **Singles Runner**: Curated one-off table scripts (e.g., `07_spy1d_full_sync.py`, `26_es1d_full_sync_v2.py`)
+- **Recent-Data Modal**: View latest rows across all fronttest timeframes for a symbol
+- **API**: `/api/pipeline/scripts`, `/api/pipeline/run/{key}`, `/api/pipeline/run-script`, `/api/pipeline/{symbol}-recent`
 
 ## 🎯 **Advanced Features**
 
@@ -146,6 +162,16 @@ Dynamic Vector Types (auto-detected from data):
 - **Advanced Algorithms**: Manhattan, Euclidean, correlation, and cosine similarity
 - **Full Range Visualization**: -100% (opposite) to +100% (identical)
 - **Client-Side Fallback**: Automatic calculation if backend unavailable
+
+### **🎮 Game Mode (Chart Navigation)** ⭐ NEW
+- **Full-Screen**: Toggle full-screen game mode for the active chart container
+- **Independent Key Processing**: Combine movement, zoom, and scaling keys without conflicts
+- **Controls**:
+  - W/A/S/D: Pan time/price
+  - Shift / Space: Zoom in/out
+  - Q/E: X-axis scale in/out (bar spacing)
+  - Z/C: Y-axis scale in/out (price range)
+  - Esc: Exit game mode
 
 ## 🔬 **Advanced Shape Similarity Analysis** ⭐ **NEW**
 
@@ -290,9 +316,11 @@ Vector Generation (compute.py)
 my-vite-project/
 ├── src/
 │   ├── components/
-│   │   ├── TradingDashboard.jsx     # 🎯 MAIN COMPONENT (4,329 lines)
-│   │   │                            # Contains all 4 integrated dashboards
+│   │   ├── TradingDashboard.jsx     # 🎯 MAIN COMPONENT (4,329 lines) — all 6 dashboards
 │   │   ├── Chart.jsx                # Chart dashboard implementation  
+│   │   ├── Backtest.jsx             # Backtest dashboard (hybrid playback + predictions)
+│   │   ├── PipelineDashboard.jsx    # Pipeline orchestration (Big 3, vectors, singles, recent-data)
+│   │   ├── Game.jsx                 # 🎮 Game mode controller (full-screen, keybinds)
 │   │   ├── LLMDashboard.jsx         # AI assistant dashboard
 │   │   ├── AdvancedChart.jsx        # TradingView integration template
 │   │   ├── shared/                  # Reusable UI components
@@ -301,15 +329,8 @@ my-vite-project/
 │   │   │   ├── ThemeToggle.jsx
 │   │   │   └── [ErrorDisplay, LoadingSpinner]
 │   │   ├── data-dashboard/          # Modular components (available but unused)
-│   │   │   ├── DataDashboard.jsx
-│   │   │   ├── DataTable.jsx
-│   │   │   ├── AdvancedFilters.jsx
-│   │   │   └── [6 more components]
 │   │   └── vector-dashboard/        # Modular components (available but unused)
-│   │       ├── VectorDashboard.jsx
-│   │       ├── VectorHeatmap.jsx
-│   │       ├── VectorComparison.jsx
-│   │       └── [4 more components]
+│   ├── components/v1 daygent models/# v1 model artifacts (joblib, scalers, CSVs, notebooks)
 │   ├── context/
 │   │   └── TradingContext.jsx       # Global state management
 │   ├── hooks/
@@ -324,9 +345,12 @@ my-vite-project/
 ├── backend/
 │   ├── main.py                      # FastAPI application
 │   ├── routers/
-│   │   └── trading.py               # Trading & shape similarity APIs
+│   │   ├── trading.py               # Trading, labels, hybrid, similarity, models (CSV/DB/live)
+│   │   └── pipeline.py              # Pipeline script launchers & recent fronttest
 │   ├── services/
-│   │   └── trading_service.py       # Business logic
+│   │   ├── trading_service.py       # Business logic (tables, hybrid, similarity, labels)
+│   │   ├── csv_model_service.py     # CSV predictions loader/service
+│   │   └── model_inference.py       # .joblib model loader & inference (thresholds, scaler)
 │   ├── [models.py, database.py, config.py]
 │   └── requirements.txt
 ├── compute.py                       # Vector generation script
@@ -372,6 +396,11 @@ GET /api/trading/tables                           # Available data tables
 GET /api/trading/date-ranges/{symbol}/{timeframe} # Available date ranges
 ```
 
+### **Hybrid Backtest→Fronttest** ⭐ NEW
+```
+GET /api/trading/hybrid/{symbol}/{timeframe}      # Ascending sequence spanning backtest then fronttest with boundary de-dup and `sources`
+```
+
 ### **🏷️ Enhanced Trading Labels & Markers** ⭐ **NEW**
 ```
 GET /api/trading/labels/{symbol}/{timeframe}      # TJR labels for any symbol/timeframe
@@ -386,6 +415,12 @@ GET /api/trading/labels/spy1h_swings              # Legacy SPY 1H swings endpoin
 - **Flexible Table Support**: Handles both `spy1h_labeled` and `spy_1h_labeled` naming conventions
 - **Graceful Degradation**: Returns empty arrays for missing tables instead of errors
 
+### **FVG Labels** ⭐ NEW
+```
+GET /api/trading/fvg-labels/{symbol}/{timeframe}        # FVG labels with `color_order` and time-range pointers
+```
+If the FVG table does not exist for a symbol/timeframe, the API returns 404 (None) vs an empty array for an existing-but-empty table.
+
 ### **Trading Labels** ⭐ **NEW**
 ```
 GET /api/trading/labels/{symbol}/{timeframe}      # TJR labels for any symbol/timeframe
@@ -395,6 +430,25 @@ GET /api/trading/swing-labels/{symbol}/{timeframe} # Swing high/low labels for a
 ### **Shape Similarity (ISO Vectors Only)**
 ```
 GET /api/trading/shape-similarity/{symbol}/{timeframe}  # Advanced similarity analysis
+```
+
+### **Model Predictions** ⭐ NEW
+```
+GET /api/trading/model-results/{symbol}/{timeframe}      # DB-backed predictions from v1_models (gb1d, gb4h, lgbm4h)
+GET /api/trading/csv-models                              # CSV model availability & date ranges
+GET /api/trading/csv-predictions/{symbol}/{timeframe}    # All CSV predictions for symbol/timeframe
+GET /api/trading/csv-prediction/{model_key}/{timestamp}  # Single CSV prediction by timestamp
+GET /api/trading/live-model-predictions/{symbol}/{timeframe}?start_date=&end_date=&model=  # Live inference
+```
+
+### **Pipeline Orchestration** ⭐ NEW
+```
+GET  /api/pipeline/scripts            # List available launchers
+POST /api/pipeline/run/{key}          # Run a launcher (.bat) in a new console
+POST /api/pipeline/run-script         # Run a specific pipeline script by filename
+GET  /api/pipeline/spy-recent         # Recent fronttest rows across all SPY timeframes
+GET  /api/pipeline/es-recent          # Recent fronttest rows across all ES timeframes
+GET  /api/pipeline/eurusd-recent      # Recent fronttest rows across all EURUSD timeframes
 ```
 
 ### **Query Parameters**
@@ -428,6 +482,15 @@ cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+### **Pipeline Setup (Windows)** ⭐ NEW
+- Ensure your pipeline launcher `.bat` files exist and point to the correct Conda environment and script paths (see routes in `backend/routers/pipeline.py`).
+- The API spawns these launchers in new consoles; no output is captured in FastAPI logs by design.
+- Use the Pipeline Dashboard to run:
+  - Big 3 updates (SPY/ES/EURUSD)
+  - Vector generators (per symbol)
+  - Single-table scripts (curated list)
+  - Recent fronttest data viewers per symbol
 
 ### **Vector Generation**
 ```bash
@@ -470,6 +533,7 @@ python compute.py
 - **Delete**: Clear all selected candles for current symbol/timeframe
 - **Shift**: Switch to range selection mode
 - **Ctrl/Cmd**: Switch to multi-select mode
+ - **🎮 Game Mode**: See Game Mode section (W/A/S/D, Shift/Space, Q/E, Z/C, Esc)
 
 ### **📊 Multi-Timeframe Breakdown Analysis** ⭐ **NEW**
 
@@ -593,6 +657,14 @@ CREATE TABLE swings_{symbol}{timeframe} (
 - **Timeframes**: 1m, 5m, 15m, 30m, 1h, 4h, 1d
 - **Total Tables**: 21 tables (3 symbols × 7 timeframes)
 
+### **Schemas & Hybrid Flow** ⭐ NEW
+- **backtest**: Historical tables (e.g., `spy_1d`)
+- **fronttest**: Fresh pipeline-updated tables (e.g., `spy_1d`)
+- **labels**: Marker tables (TJR, swings, FVG); supports `spy1h_*` and `spy_1h_*` naming
+- **v1_models**: DB-backed predictions (`gb1d`, `gb4h`, `lgbm4h`)
+
+Hybrid route (`GET /api/trading/hybrid/{symbol}/{timeframe}`) returns an ascending sequence composed of backtest followed by fronttest rows, removes any duplicated boundary candle (prefers fronttest), and includes a parallel `sources` array to indicate origin per row.
+
 ### **Example Table Names Supported**
 - `spy1h_labeled`, `spy_1h_labeled`
 - `spy1h_swings`, `spy_1h_swings`
@@ -629,7 +701,7 @@ BATCH_SIZE=128
 - [ ] **Pattern Templates**: Save and load candle selection patterns
 
 ### **Advanced Features**  
-- [ ] **Backtesting Engine**: Historical strategy testing with vector patterns
+- [x] **Backtesting Engine**: Historical playback with hybrid backtest→fronttest and model predictions (implemented)
 - [ ] **Alert System**: Pattern-based notifications and automated signals
 - [ ] **Portfolio Management**: Multi-asset position tracking and risk management
 - [ ] **Machine Learning Pipeline**: Auto-pattern discovery and classification
@@ -663,6 +735,10 @@ BATCH_SIZE=128
 - **Large Matrices**: Shape similarity >50x50 may impact browser performance
 - **TradingView Charts**: Requires separate license for production use
 - **TJR/Swing Toggles**: If toggles do not appear, check that your database has the appropriate labeled or swing tables for the selected timeframe
+ - **Hybrid Route (No Data)**: Verify `backtest` and `fronttest` tables exist for the symbol/timeframe; hybrid prefers fronttest at boundary
+ - **Live Predictions Unavailable**: Only SPY 1D/4H supported; ensure dates are within test window (after 2024-12-16). Confirm model artifacts exist and env has required libraries
+ - **Pipeline Launch Fails (Windows)**: Confirm `.bat` paths in backend `pipeline.py` match local files, and that the correct Conda env is activated in the scripts
+ - **CSV Predictions Missing**: Check `src/components/v1 daygent models/*/test_predictions*.csv` exist and are readable
 
 ### **Performance Tips**
 - **Data Fetching**: Use date ranges instead of large record limits
@@ -684,10 +760,12 @@ BATCH_SIZE=128
 5. See real-time status of available tables and markers
 
 ### **Advanced Usage**
-- **Multi-Dashboard Analysis**: Use all four dashboards simultaneously for comprehensive analysis
+- **Multi-Dashboard Analysis**: Use all six dashboards simultaneously for comprehensive analysis
 - **Vector Analysis**: Explore pattern recognition with ISO vectors and shape similarity
 - **Candle Selection**: Use advanced selection modes for detailed analysis
 - **Date Range Filtering**: Optimize data loading with intelligent date controls
+ - **Backtest Playback**: Load SPY 1D/4H hybrid data and replay with model overlays
+ - **Pipeline Orchestration**: Launch updates via Pipeline Dashboard and inspect recent fronttest data
 
 ## 🏷️ **FVG (Fair Value Gap) Labeling System** ⭐ **NEW**
 
@@ -734,6 +812,22 @@ CREATE TABLE labels.spy4h_fvg (
 - **Enhanced Model Architecture**: Improved LSTM, dynamic ensemble weighting
 
 ### **Model Training Pipeline**
+### **v1 Deployed Models & Thresholds** ⭐ NEW
+- **Gradient Boosting 1D (gb_1d)**: threshold 0.57 (pred if p_up ≥ 0.57)
+- **Gradient Boosting 4H (gb_4h)**: threshold 0.50
+- **LightGBM Financial 4H (lgbm_4h)**: threshold 0.30
+
+Artifacts live under `src/components/v1 daygent models/` (joblib models, scalers, deployment configs, CSV `test_predictions`, results JSON, notebooks). Colab was used for training/experiments; models and scalers are exported and version-locked.
+
+Frontend consumption:
+- **Backtest Dashboard**
+  - DB-backed results: `GET /api/trading/model-results/{symbol}/{timeframe}` (compact per-candle display)
+  - Live inference: `GET /api/trading/live-model-predictions/...` (SPY 1D/4H, predictions shown after 2024-12-16 test cutoff)
+- **CSV Predictions** (offline)
+  - Discovery: `GET /api/trading/csv-models`
+  - Bulk: `GET /api/trading/csv-predictions/{symbol}/{timeframe}`
+  - Specific timestamp: `GET /api/trading/csv-prediction/{model_key}/{timestamp}`
+
 ```python
 # Feature Types in v2
 1. Core Vectors (789 features)
@@ -967,6 +1061,7 @@ src/components/
 **Daygent** represents a comprehensive agentic trading intelligence platform, combining quantitative analysis, machine learning, and professional trading tools in a unified interface. The monolithic architecture ensures seamless integration while the modular components provide future scalability options.
 
 **🎯 Current Status**: Fully functional with 4 integrated dashboards, universal TJR and swing marker support, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
+**🎯 Current Status**: Fully functional with 6 integrated dashboards (Data, Vector, Chart, Backtest, Pipeline, LLM framework), universal TJR and swing marker support, advanced candle selection, dynamic vector detection including ISO vectors with shape similarity, professional charting capabilities, and AI-ready framework for future model integration.
 
 **Latest Updates**:
 - 🎯 **Advanced Candle Selection System**: Interactive multi-mode selection with drag, range, and time-based selection
@@ -978,6 +1073,8 @@ src/components/
 - 🔄 **Dynamic Vector Detection**: Automatic detection of available vector types from database
 - 📊 **Real-time Selection Statistics**: Live analysis of selected candle patterns and trends
 - 🎯 **Binary Classification Labels**: Future price direction column added to all 21 backtest tables
+ - 🧪 **Backtest Dashboard**: Hybrid backtest→fronttest playback, per-candle model predictions, source indicators
+ - ⚙️ **Pipeline Dashboard**: Windows-native orchestrator for TradingView scraping, vector launchers, single-script runner, recent-data modal
 
 **Credits**:
 - Universal marker support and robust table detection added July 2024
