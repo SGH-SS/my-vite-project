@@ -13,3 +13,11 @@ build/
 
 # .venv
 .venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Ignore any "runs" directories anywhere
+**/runs/

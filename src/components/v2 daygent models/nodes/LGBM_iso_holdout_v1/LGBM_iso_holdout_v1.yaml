@@ -1,0 +1,88 @@
+node_id: LGBM_iso_holdout_v1
+family: LightGBMClassifier
+target: "P(up) > \u03C4 @ next day (binary)"
+featureset:
+- raw_ohlcv_5
+- iso_ohlc_4
+- tf_flags_1d_4h
+- engineered_shadows_range_pricechange_volumem
+description: LGBM classification with ISO-style 16-D features. 80/20 time-ordered
+  holdout, threshold by validation accuracy.
+hp_space:
+  params:
+    learning_rate:
+      type: float
+      low: 0.01
+      high: 0.08
+    num_leaves:
+      type: int
+      low: 31
+      high: 95
+    max_depth:
+      type: int
+      low: 4
+      high: 8
+    min_child_samples:
+      type: int
+      low: 20
+      high: 80
+    feature_fraction:
+      type: float
+      low: 0.7
+      high: 1.0
+    bagging_fraction:
+      type: float
+      low: 0.7
+      high: 1.0
+    bagging_freq:
+      type: int
+      low: 0
+      high: 1
+    lambda_l1:
+      type: float
+      low: 0.0
+      high: 0.5
+    lambda_l2:
+      type: float
+      low: 0.0
+      high: 1.0
+    n_estimators:
+      type: int
+      low: 600
+      high: 4000
+change_budget_per_loop: 1
+trials_budget_per_loop: 12
+time_budget_minutes: 20
+similarity_guard:
+  mode: corr_threshold
+  threshold: 0.85
+  reference_nodes:
+  - LGBM_iso_cv_weighted_v1
+eval_protocol:
+  data_window:
+    lookback_years: 5
+    test_window_days: 35
+  validation:
+    method: holdout_time_ordered
+    train_ratio: 0.8
+    val_ratio: 0.2
+  threshold_grid:
+    metric: accuracy
+    low: 0.30
+    high: 0.80
+    step: 0.01
+  costs:
+    bps_each_way: 1.5
+    borrow_bps_per_day: 0.0
+  tests:
+    spa: false
+    mcs: false
+  turnover_penalty: 0.002
+  slippage_model: bps_linear
+registry_tags:
+  family_bucket: trees
+  feature_bucket: iso_price_engineered
+  validation_style: holdout_80_20
+  thresholding: val_accuracy_grid_0.30_0.80_step_0.01
+  early_stopping: optional
+  class_weight: none

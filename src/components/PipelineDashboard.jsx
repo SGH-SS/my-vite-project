@@ -192,6 +192,26 @@ export default function PipelineDashboard({ isDarkMode = false }) {
           </div>
         )}
 
+        {/* Utilities */}
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
+          <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl p-5 shadow-sm`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">🛠 Fill Fronttest Future</h3>
+                <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Fill empty 'future' values across all fronttest tables.
+                </p>
+              </div>
+              <Button 
+                label={busyKey === '44_fronttest_fill_future.py' ? 'Starting…' : 'Run'}
+                onClick={() => runSingle('44_fronttest_fill_future.py')}
+                disabled={busyKey !== null}
+                tone="primary"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Big 3 Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {primary.map(s => (

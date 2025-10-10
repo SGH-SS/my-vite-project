@@ -1,0 +1,93 @@
+node_id: LGBM_iso_cv_weighted_v1
+family: LightGBMClassifier
+target: "P(up) > \u03C4 @ next day (binary)"
+featureset:
+- raw_ohlcv_5
+- iso_ohlc_4
+- tf_flags_1d_4h
+- engineered_shadows_range_pricechange_volumem
+description: LGBM classification with ISO-style 16-D features. Purged CV, recency
+  weights, F1-threshold, early stopping.
+hp_space:
+  params:
+    learning_rate:
+      type: float
+      low: 0.01
+      high: 0.1
+    num_leaves:
+      type: int
+      low: 31
+      high: 127
+    max_depth:
+      type: int
+      low: 4
+      high: 8
+    min_child_samples:
+      type: int
+      low: 20
+      high: 120
+    feature_fraction:
+      type: float
+      low: 0.7
+      high: 1.0
+    bagging_fraction:
+      type: float
+      low: 0.7
+      high: 1.0
+    bagging_freq:
+      type: int
+      low: 0
+      high: 1
+    lambda_l1:
+      type: float
+      low: 0.0
+      high: 0.5
+    lambda_l2:
+      type: float
+      low: 0.0
+      high: 1.0
+    n_estimators:
+      type: int
+      low: 800
+      high: 6000
+change_budget_per_loop: 1
+trials_budget_per_loop: 20
+time_budget_minutes: 30
+similarity_guard:
+  mode: corr_threshold
+  threshold: 0.85
+  reference_nodes:
+  - LGBM_iso_holdout_v1
+eval_protocol:
+  data_window:
+    lookback_years: 5
+    test_window_days: 35
+  validation:
+    method: purged_time_series_cv
+    n_splits: 5
+    gap_days: 5
+    recency_weighting:
+      enabled: true
+      tau_bars: 180
+  threshold_selection:
+    metric: F1
+    aggregation: median_across_folds
+    low: 0.30
+    high: 0.80
+    step: 0.01
+  costs:
+    bps_each_way: 1.5
+    borrow_bps_per_day: 0.0
+  tests:
+    spa: false
+    mcs: false
+  turnover_penalty: 0.002
+  slippage_model: bps_linear
+registry_tags:
+  family_bucket: trees
+  feature_bucket: iso_price_engineered
+  validation_style: purged_cv + recency_weighted
+  thresholding: median_F1_across_folds
+  early_stopping: 'on'
+  class_weight: balanced_or_none
+  notes: gap_days [3,10]; recency_tau [120,240]

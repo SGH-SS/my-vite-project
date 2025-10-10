@@ -1,0 +1,16 @@
+name: daygent-train
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scikit-learn
+  - lightgbm
+  - sqlalchemy
+  - psycopg
+  - pip:
+      - joblib
+

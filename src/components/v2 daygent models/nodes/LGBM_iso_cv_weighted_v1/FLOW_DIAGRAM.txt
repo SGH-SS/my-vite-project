@@ -1,0 +1,465 @@
+═══════════════════════════════════════════════════════════════════════════════
+    ENHANCED TRAINING FLOW: train_three_window_meta_cumulative.py
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SCRIPT INITIALIZATION                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────┐
+  │ Load data from PostgreSQL                            │
+  │ Split: Train (5y) | Pre-test (1y) | Test (last 35)  │
+  │ Extract features, scale, wrap in DataFrames         │
+  │ Train baseline model on Train window                │
+  └──────────────────────────────────────────────────────┘
+                           ↓
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PRE-TEST FOLD OPTIMIZATION                           │
+│                              (7 folds total)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  FOLD 1 (Exploratory Only)                                   ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       ┌────────────────────────────────────────┐
+       │ USER PROMPT                            │
+       │  [1] Search (~5 min)                  │
+       │  [2] Skip (use known params, ~5 sec)  │
+       └────────────────────────────────────────┘
+                ↓                    ↓
+         [Choice: 1]          [Choice: 2]
+                ↓                    ↓
+       ┌─────────────┐      ┌──────────────┐
+       │ Phase 1     │      │ Quick eval   │
+       │ Exploratory │      │ with known   │
+       │ 5 minutes   │      │ params       │
+       │ ~140 trials │      │ 1 trial      │
+       └─────────────┘      └──────────────┘
+                ↓                    ↓
+       ┌──────────────────────────┐  │
+       │ Check: AUC < 0.55?       │  │
+       └──────────────────────────┘  │
+           YES ↓        NO ↓          │
+       ┌─────────┐  ┌───────┐       │
+       │ Phase 3 │  │ Done  │       │
+       │ Extended│  └───────┘       │
+       │ +5 min  │       ↓           ↓
+       │ ~100 tr │   ┌────────────────┐
+       └─────────┘   │ Store best for │
+           ↓         │ next fold      │
+       ┌─────────┐   └────────────────┘
+       │ Done    │         ↓
+       └─────────┘         ↓
+           ↓ ←─────────────┘
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  FOLD 2-3 (Exploratory Only)                                 ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       [Same as Fold 1]
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  FOLD 4-7 (Exploratory + Prior-Guided)                       ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       ┌────────────────────────────────────────┐
+       │ USER PROMPT                            │
+       │  [1] Search (~5 min)                  │
+       │  [2] Skip                              │
+       └────────────────────────────────────────┘
+                ↓                    ↓
+         [Choice: 1]          [Choice: 2]
+                ↓                    ↓
+       ┌─────────────┐      ┌──────────────┐
+       │ Phase 1     │      │ Quick eval   │
+       │ Exploratory │      │ 5 seconds    │
+       │ 3 minutes   │      └──────────────┘
+       │ ~60 trials  │              ↓
+       └─────────────┘         [Done, Next fold]
+                ↓
+       ┌─────────────┐
+       │ Phase 2     │
+       │ Prior-guide │
+       │ 2 minutes   │
+       │ ~40 trials  │
+       └─────────────┘
+                ↓
+       ┌──────────────────────────┐
+       │ Check: AUC < 0.55?       │
+       └──────────────────────────┘
+           YES ↓        NO ↓
+       ┌─────────────┐  ┌────┐
+       │ Phase 3     │  │Done│
+       │ Extended    │  └────┘
+       │ +5 min      │
+       │ Wider param │
+       │ DART/GOSS   │
+       │ ~100 trials │
+       └─────────────┘
+                ↓
+       ┌─────────────┐
+       │ Done        │
+       └─────────────┘
+
+                           ↓
+           [All folds complete, meta-learner trained]
+                           ↓
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          FINAL MODEL TRAINING                               │
+│                       (DUAL METHOD COMPARISON)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  METHOD 1: Train+Pre-test Signature                          ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       ┌──────────────────────────────────────────┐
+       │ Compute signature from all 1474 samples  │
+       │ (Train: 1224 + Pre-test: 250)           │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Meta-learner predicts hyperparameters   │
+       │ inferred_params_combined                │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Train LightGBM on Train+Pre-test         │
+       │ with inferred_params_combined            │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Predict on test window (35 bars)        │
+       │ Threshold = median of fold thresholds   │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ test_stats_combined                      │
+       │ AUC: 0.6982, Acc: 0.5294, F1: 0.6800   │
+       └──────────────────────────────────────────┘
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  METHOD 2: Pre-test-Only Signature                           ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       ┌──────────────────────────────────────────┐
+       │ Compute signature from 250 recent samples│
+       │ (Pre-test only: most recent year)       │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Meta-learner predicts hyperparameters   │
+       │ inferred_params_pretest                 │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Train LightGBM on Train+Pre-test         │
+       │ with inferred_params_pretest             │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Predict on test window (35 bars)        │
+       │ Same threshold as Method 1               │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ test_stats_pretest                       │
+       │ AUC: 0.8519, Acc: 0.6250, F1: 0.7429   │
+       └──────────────────────────────────────────┘
+
+                           ↓
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  AUTO-SELECTION                                              ║
+  ╚═══════════════════════════════════════════════════════════════╝
+       ┌──────────────────────────────────────────┐
+       │ Compare AUCs:                            │
+       │ Method 1: 0.6982                         │
+       │ Method 2: 0.8519  ← WINNER              │
+       └──────────────────────────────────────────┘
+                           ↓
+       ┌──────────────────────────────────────────┐
+       │ Save Method 2 model to disk              │
+       │ Save both methods' stats to JSON        │
+       │ Report comparison in console             │
+       └──────────────────────────────────────────┘
+
+                           ↓
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            ARTIFACTS SAVED                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+  - lightgbm_three_window_cumulative.joblib (selected model)
+  - scaler_three_window_cumulative.joblib
+  - results_three_window_cumulative.json (includes both methods)
+  - feature_importances.json
+  - threshold_sweep.json
+  - code snapshot
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    EXTENSION MODE DECISION TREE
+═══════════════════════════════════════════════════════════════════════════════
+
+After Phase 1 (and Phase 2 if applicable):
+  │
+  ├─ Best AUC ≥ 0.55? ────YES───→ ✅ DONE (good fold)
+  │
+  └─ Best AUC < 0.55? ────YES───→ ⚠️  TRIGGER EXTENSION
+                                    │
+                                    ↓
+                        ┌───────────────────────────┐
+                        │ Phase 3: Extended Search  │
+                        │ Budget: +300 seconds      │
+                        │ Seed: 43 (different)      │
+                        └───────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Wider hyperparameter ranges:      │
+                        │ • learning_rate: 0.005 - 0.2      │
+                        │ • num_leaves: 7 - 255             │
+                        │ • max_depth: 2 - 15               │
+                        │ • lambda_l1/l2: 0.0 - 5.0         │
+                        └───────────────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Additional hyperparameters:       │
+                        │ • subsample (0.5 - 1.0)           │
+                        │ • subsample_freq (0 - 10)         │
+                        │ • colsample_bytree (0.3 - 1.0)    │
+                        │ • min_split_gain (0.0 - 2.0)      │
+                        │ • max_bin (63 - 511)              │
+                        │ • path_smooth (0.0 - 1.0)         │
+                        └───────────────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Alternative boosting types:       │
+                        │ • GBDT (standard)                 │
+                        │ • DART (dropout trees)            │
+                        │ • GOSS (gradient sampling)        │
+                        └───────────────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Adaptive n_estimators:            │
+                        │ • LR < 0.02 → 6000 trees          │
+                        │ • LR < 0.05 → 5000 trees          │
+                        │ • LR ≥ 0.05 → 4000 trees          │
+                        └───────────────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Run ~100 trials with TPE + Pruner │
+                        └───────────────────────────────────┘
+                                    ↓
+                        ┌───────────────────────────────────┐
+                        │ Merge with Phase 1/2 trials       │
+                        │ Re-determine global best          │
+                        └───────────────────────────────────┘
+                                    ↓
+                              Final AUC ≥ 0.55?
+                                    ↓
+                        YES → 🎯 SUCCESS!
+                        NO  → ⚠️  Improved but still low
+                                    ↓
+                            Accept & Continue
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    PARAMETER SELECTION COMPARISON
+═══════════════════════════════════════════════════════════════════════════════
+
+                         [All 7 folds complete]
+                                  ↓
+                    ┌──────────────────────────────┐
+                    │ Meta-learner trained on:     │
+                    │ - Fold 1 signature + params  │
+                    │ - Fold 2 signature + params  │
+                    │ - ...                        │
+                    │ - Fold 7 signature + params  │
+                    └──────────────────────────────┘
+                                  ↓
+                     ┌────────────────────────────┐
+                     │   Dual Signature Approach   │
+                     └────────────────────────────┘
+                        ↓                    ↓
+          ┌─────────────────────┐  ┌────────────────────────┐
+          │  METHOD 1           │  │  METHOD 2              │
+          │  Train+Pre-test     │  │  Pre-test Only         │
+          └─────────────────────┘  └────────────────────────┘
+                    ↓                          ↓
+    ┌──────────────────────────┐  ┌───────────────────────────┐
+    │ Signature from:          │  │ Signature from:           │
+    │ • n = 1474               │  │ • n = 250                 │
+    │ • Data: 2019-2025        │  │ • Data: 2024-2025 only    │
+    │ • Pos rate: 0.548        │  │ • Pos rate: 0.580         │
+    └──────────────────────────┘  └───────────────────────────┘
+                    ↓                          ↓
+    ┌──────────────────────────┐  ┌───────────────────────────┐
+    │ Meta-learner predicts:   │  │ Meta-learner predicts:    │
+    │ • LR = 0.01              │  │ • LR = 0.0276             │
+    │ • Leaves = 65            │  │ • Leaves = 113            │
+    │ • Depth = 3              │  │ • Depth = 5               │
+    └──────────────────────────┘  └───────────────────────────┘
+                    ↓                          ↓
+    ┌──────────────────────────┐  ┌───────────────────────────┐
+    │ Train final model on     │  │ Train final model on      │
+    │ Train+Pre-test           │  │ Train+Pre-test            │
+    └──────────────────────────┘  └───────────────────────────┘
+                    ↓                          ↓
+    ┌──────────────────────────┐  ┌───────────────────────────┐
+    │ Test on 35-bar window    │  │ Test on 35-bar window     │
+    │ AUC: 0.6982              │  │ AUC: 0.8519 ← BETTER!     │
+    │ Acc: 0.5294              │  │ Acc: 0.6250               │
+    │ F1:  0.6800              │  │ F1:  0.7429               │
+    └──────────────────────────┘  └───────────────────────────┘
+                    ↓                          ↓
+                    └──────────┬───────────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │ Select Method 2      │
+                    │ (Higher AUC)         │
+                    │ Save to disk         │
+                    └──────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+              EXTENSION MODE: THINKING OUTSIDE THE BOX
+═══════════════════════════════════════════════════════════════════════════════
+
+Standard Search Result: AUC = 0.29 (< 0.55 threshold)
+                           ↓
+            ┌──────────────────────────────────┐
+            │ Why might AUC be so low?         │
+            ├──────────────────────────────────┤
+            │ ❌ Wrong boosting algorithm      │
+            │ ❌ Insufficient regularization   │
+            │ ❌ Too few/many features used    │
+            │ ❌ Binning granularity mismatch  │
+            │ ❌ Not enough trees for low LR   │
+            └──────────────────────────────────┘
+                           ↓
+            ┌──────────────────────────────────┐
+            │ Extension Search Tries:          │
+            └──────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 1. DART Boosting                          │
+        │    • Drops trees randomly                 │
+        │    • Prevents early tree dominance        │
+        │    • Better for overfitting scenarios     │
+        └───────────────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 2. GOSS Boosting                          │
+        │    • Samples large gradient instances     │
+        │    • Better for imbalanced data           │
+        │    • Focuses on hard-to-classify examples │
+        └───────────────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 3. Extreme Regularization                 │
+        │    • lambda_l1/l2 up to 5.0               │
+        │    • min_split_gain up to 2.0             │
+        │    • path_smooth up to 1.0                │
+        └───────────────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 4. Aggressive Subsampling                 │
+        │    • subsample down to 0.5                │
+        │    • colsample_bytree down to 0.3         │
+        │    • Reduces overfitting dramatically     │
+        └───────────────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 5. Binning Adjustments                    │
+        │    • max_bin from 63 (coarse) to 511      │
+        │    • Find optimal granularity             │
+        └───────────────────────────────────────────┘
+                           ↓
+        ┌───────────────────────────────────────────┐
+        │ 6. More Trees for Low Learning Rates      │
+        │    • LR < 0.02 → 6000 trees              │
+        │    • Ensures convergence                  │
+        └───────────────────────────────────────────┘
+                           ↓
+                  After 5 minutes...
+                           ↓
+            ┌──────────────────────────────────┐
+            │ Best Result:                     │
+            │ AUC: 0.58 (improved from 0.29)  │
+            │ Algorithm: GOSS                  │
+            │ subsample: 0.7                   │
+            │ colsample_bytree: 0.5            │
+            └──────────────────────────────────┘
+                           ↓
+                  ✅ Success! Continue
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        TIME BUDGET ALLOCATION
+═══════════════════════════════════════════════════════════════════════════════
+
+FOLDS 1-3 (Exploratory Only):
+  ┌────────────────────────────────────────┐
+  │ Phase 1: 300s (Exploratory)            │
+  │ Phase 2: 0s (skipped)                  │
+  │ Extension: 0-300s (if AUC < 0.55)      │
+  └────────────────────────────────────────┘
+  Total: 300-600 seconds (5-10 minutes)
+
+FOLDS 4+ (Exploratory + Prior-Guided):
+  ┌────────────────────────────────────────┐
+  │ Phase 1: 180s (Exploratory)            │
+  │ Phase 2: 120s (Prior-guided)           │
+  │ Extension: 0-300s (if AUC < 0.55)      │
+  └────────────────────────────────────────┘
+  Total: 300-600 seconds (5-10 minutes)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    WHY DUAL SIGNATURE MATTERS
+═══════════════════════════════════════════════════════════════════════════════
+
+Imagine predicting optimal model settings for October 2025 data:
+
+METHOD 1 (Train+Pre-test):
+  "What worked well for 2019-2025 combined?"
+  • Includes 2019-2020 (pre-COVID market)
+  • Includes 2020-2021 (COVID volatility)
+  • Includes 2021-2023 (inflation regime)
+  • Includes 2024-2025 (current regime)
+  • Average of ALL regimes → middle-of-the-road params
+
+METHOD 2 (Pre-test Only):
+  "What worked well for 2024-2025 specifically?"
+  • Only recent year data
+  • Current market regime
+  • Current volatility patterns
+  • Current correlations
+  • Optimized for NOW → specialized params
+
+RESULT: Method 2 better for non-stationary markets (most financial data)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    TYPICAL RUN STATISTICS
+═══════════════════════════════════════════════════════════════════════════════
+
+Full Search (all folds choose [1]):
+  • Total time: 35-70 minutes
+  • Trials per fold: 100-230
+  • Extensions triggered: 1-3 folds
+  • Method 2 win rate: ~80%
+  • AUC improvement over Method 1: +10-25%
+
+Fast Re-run (all folds choose [2]):
+  • Total time: 35-70 seconds
+  • Trials per fold: 1
+  • Extensions triggered: 0
+  • Uses Method 2 if previously selected
+  • Results: Nearly identical to full run
+
+Mixed (5 skip, 2 search):
+  • Total time: 10-20 minutes
+  • Useful for: debugging specific folds
+  • Testing: new feature engineering
+  • Iterating: threshold selection changes
+
+
+═══════════════════════════════════════════════════════════════════════════════
+

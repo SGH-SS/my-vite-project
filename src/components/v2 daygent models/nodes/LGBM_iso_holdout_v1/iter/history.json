@@ -1,0 +1,1403 @@
+{
+  "generated_at_utc": "2025-10-03T02:42:35Z",
+  "runs_dir": "c:\\Users\\sham\\Documents\\agentic trading system\\mcp\\my-vite-project\\src\\components\\v2 daygent models\\nodes\\LGBM_iso_holdout_v1\\iter\\artifacts_lgbm_1d_iso\\runs",
+  "iterations": [
+    {
+      "iteration": "iteration0",
+      "script_name": "iteration0.py",
+      "prev_iteration": null,
+      "no_changes": true,
+      "changes": [],
+      "summary": {
+        "replaced": 0,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 0
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration1",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration0",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 63,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 69,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 4000,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 5000,"
+        }
+      ],
+      "summary": {
+        "replaced": 2,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 2
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration2",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration1",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 5000,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6069,"
+        }
+      ],
+      "summary": {
+        "replaced": 1,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 1
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration3",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration2",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.05,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.04,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 40,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 50,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.85,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.80,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.85,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.80,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.2,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.0,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.01,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6069,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 7500,"
+        }
+      ],
+      "summary": {
+        "replaced": 7,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 7
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration4",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration3",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.04,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.05,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 50,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 40,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.80,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.85,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.80,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.85,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.2,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.01,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.0,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 7500,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6069,"
+        }
+      ],
+      "summary": {
+        "replaced": 7,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 7
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration5",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration4",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 206,
+          "prev_text": "    \"boosting_type\": \"gbdt\",",
+          "new_line_no": 206,
+          "new_text": "    \"boosting_type\": \"dart\","
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.05,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.045,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 69,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 75,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 40,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 45,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6069,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 8000,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 219,
+          "new_text": "    \"is_unbalance\": True,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 220,
+          "new_text": "    \"drop_rate\": 0.1,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 221,
+          "new_text": "    \"skip_drop\": 0.5,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 222,
+          "new_text": "    \"max_drop\": 50,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 223,
+          "new_text": "    \"uniform_drop\": True,"
+        }
+      ],
+      "summary": {
+        "replaced": 5,
+        "inserted": 5,
+        "deleted": 0,
+        "total": 10
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration6",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration5",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 206,
+          "prev_text": "    \"boosting_type\": \"dart\",",
+          "new_line_no": 206,
+          "new_text": "    \"boosting_type\": \"gbdt\","
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.045,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.05,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.12,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 8000,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 7000,"
+        },
+        {
+          "change_type": "delete",
+          "prev_line_no": 219,
+          "prev_text": "    \"is_unbalance\": True,",
+          "new_line_no": null,
+          "new_text": ""
+        },
+        {
+          "change_type": "delete",
+          "prev_line_no": 220,
+          "prev_text": "    \"drop_rate\": 0.1,",
+          "new_line_no": null,
+          "new_text": ""
+        },
+        {
+          "change_type": "delete",
+          "prev_line_no": 221,
+          "prev_text": "    \"skip_drop\": 0.5,",
+          "new_line_no": null,
+          "new_text": ""
+        },
+        {
+          "change_type": "delete",
+          "prev_line_no": 222,
+          "prev_text": "    \"max_drop\": 50,",
+          "new_line_no": null,
+          "new_text": ""
+        },
+        {
+          "change_type": "delete",
+          "prev_line_no": 223,
+          "prev_text": "    \"uniform_drop\": True,",
+          "new_line_no": null,
+          "new_text": ""
+        }
+      ],
+      "summary": {
+        "replaced": 4,
+        "inserted": 0,
+        "deleted": 5,
+        "total": 9
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration7",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration6",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 75,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 69,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 45,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 40,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.85,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.85,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.12,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 7000,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6500,"
+        }
+      ],
+      "summary": {
+        "replaced": 6,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 6
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration8",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration7",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 40,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 45,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.88,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.85,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.88,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.85,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.0,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.005,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6500,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6069,"
+        }
+      ],
+      "summary": {
+        "replaced": 5,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 5
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration9",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration8",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.05,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.04,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 69,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 72,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 45,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 42,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.005,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.0,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6069,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 7500,"
+        }
+      ],
+      "summary": {
+        "replaced": 5,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 5
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration10",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration9",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.04,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.03,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 72,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 70,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 210,
+          "prev_text": "    \"max_depth\": 6,",
+          "new_line_no": 210,
+          "new_text": "    \"max_depth\": 7,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 42,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 40,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.85,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.8,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.85,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.8,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 215,
+          "prev_text": "    \"lambda_l1\": 0.1,",
+          "new_line_no": 215,
+          "new_text": "    \"lambda_l1\": 0.2,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.2,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.0,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.001,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 7500,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 8000,"
+        }
+      ],
+      "summary": {
+        "replaced": 10,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 10
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration11",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration10",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.03,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.05,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 70,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 69,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 210,
+          "prev_text": "    \"max_depth\": 7,",
+          "new_line_no": 210,
+          "new_text": "    \"max_depth\": 6,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.8,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.8,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 215,
+          "prev_text": "    \"lambda_l1\": 0.2,",
+          "new_line_no": 215,
+          "new_text": "    \"lambda_l1\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.2,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.001,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.0,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 8000,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6500,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 243,
+          "prev_text": "    for thr in np.round(np.arange(0.30, 0.801, 0.01), 2):",
+          "new_line_no": 243,
+          "new_text": "    for thr in np.round(np.arange(0.31, 0.801, 0.01), 2):"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 266,
+          "prev_text": "nb_low = max(0.30, round(best_thr - 0.10, 2))",
+          "new_line_no": 266,
+          "new_text": "nb_low = max(0.31, round(best_thr - 0.10, 2))"
+        }
+      ],
+      "summary": {
+        "replaced": 11,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 11
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration12",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration11",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.12,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.0,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.001,"
+        }
+      ],
+      "summary": {
+        "replaced": 2,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 2
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration13",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration12",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.88,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.89,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.88,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.87,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 214,
+          "prev_text": "    \"bagging_freq\": 1,",
+          "new_line_no": 214,
+          "new_text": "    \"bagging_freq\": 2,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.12,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.001,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.0,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6500,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6600,"
+        }
+      ],
+      "summary": {
+        "replaced": 6,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 6
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration14",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration13",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.89,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.87,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 214,
+          "prev_text": "    \"bagging_freq\": 2,",
+          "new_line_no": 214,
+          "new_text": "    \"bagging_freq\": 1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6600,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6500,"
+        }
+      ],
+      "summary": {
+        "replaced": 4,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 4
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration15",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration14",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 69,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 70,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.88,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.87,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.11,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6500,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6400,"
+        }
+      ],
+      "summary": {
+        "replaced": 4,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 4
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration16",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration15",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 70,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 69,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.87,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.11,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6400,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6450,"
+        }
+      ],
+      "summary": {
+        "replaced": 4,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 4
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration17",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration16",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 246,
+          "prev_text": "        if acc_thr > best_val_acc:",
+          "new_line_no": 246,
+          "new_text": "        # Select highest threshold in case of tie"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 247,
+          "new_text": "        if acc_thr > best_val_acc or (acc_thr == best_val_acc and thr > best_thr):"
+        }
+      ],
+      "summary": {
+        "replaced": 1,
+        "inserted": 1,
+        "deleted": 0,
+        "total": 2
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration18",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration17",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.05,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.045,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 69,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 71,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.88,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.86,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.88,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.86,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.11,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6450,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6700,"
+        }
+      ],
+      "summary": {
+        "replaced": 6,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 6
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration19",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration18",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 208,
+          "prev_text": "    \"learning_rate\": 0.045,",
+          "new_line_no": 208,
+          "new_text": "    \"learning_rate\": 0.05,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 71,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 70,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 40,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 38,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.86,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.87,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.86,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.87,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.11,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6700,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6350,"
+        }
+      ],
+      "summary": {
+        "replaced": 7,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 7
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration20",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration19",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 209,
+          "prev_text": "    \"num_leaves\": 70,",
+          "new_line_no": 209,
+          "new_text": "    \"num_leaves\": 69,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 38,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 40,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 212,
+          "prev_text": "    \"feature_fraction\": 0.87,",
+          "new_line_no": 212,
+          "new_text": "    \"feature_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 213,
+          "prev_text": "    \"bagging_fraction\": 0.87,",
+          "new_line_no": 213,
+          "new_text": "    \"bagging_fraction\": 0.88,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 218,
+          "prev_text": "    \"n_estimators\": 6350,",
+          "new_line_no": 218,
+          "new_text": "    \"n_estimators\": 6500,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 219,
+          "new_text": "    \"is_unbalance\": True,"
+        }
+      ],
+      "summary": {
+        "replaced": 5,
+        "inserted": 1,
+        "deleted": 0,
+        "total": 6
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration21",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration20",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 215,
+          "prev_text": "    \"lambda_l1\": 0.1,",
+          "new_line_no": 215,
+          "new_text": "    \"lambda_l1\": 0.12,"
+        }
+      ],
+      "summary": {
+        "replaced": 1,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 1
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration22",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration21",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 40,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 42,"
+        }
+      ],
+      "summary": {
+        "replaced": 1,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 1
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration23",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration22",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "delete",
+          "prev_line_no": 219,
+          "prev_text": "    \"is_unbalance\": True,",
+          "new_line_no": null,
+          "new_text": ""
+        }
+      ],
+      "summary": {
+        "replaced": 0,
+        "inserted": 0,
+        "deleted": 1,
+        "total": 1
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration24",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration23",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 211,
+          "prev_text": "    \"min_child_samples\": 42,",
+          "new_line_no": 211,
+          "new_text": "    \"min_child_samples\": 40,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 215,
+          "prev_text": "    \"lambda_l1\": 0.12,",
+          "new_line_no": 215,
+          "new_text": "    \"lambda_l1\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.1,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.12,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.0,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.001,"
+        }
+      ],
+      "summary": {
+        "replaced": 4,
+        "inserted": 0,
+        "deleted": 0,
+        "total": 4
+      },
+      "missing_code_snapshot": false
+    },
+    {
+      "iteration": "iteration25",
+      "script_name": "iteration0.py",
+      "prev_iteration": "iteration24",
+      "no_changes": false,
+      "changes": [
+        {
+          "change_type": "replace",
+          "prev_line_no": 216,
+          "prev_text": "    \"lambda_l2\": 0.12,",
+          "new_line_no": 216,
+          "new_text": "    \"lambda_l2\": 0.1,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 217,
+          "prev_text": "    \"min_gain_to_split\": 0.001,",
+          "new_line_no": 217,
+          "new_text": "    \"min_gain_to_split\": 0.0,"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 225,
+          "prev_text": "if len(X_tr) and len(y_tr):",
+          "new_line_no": 225,
+          "new_text": "if len(X_tr) and len(y_tr) and len(X_va):"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 226,
+          "prev_text": "    model.fit(X_tr, y_tr)",
+          "new_line_no": 226,
+          "new_text": "    model.fit("
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 227,
+          "new_text": "        X_tr,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 228,
+          "new_text": "        y_tr,"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 229,
+          "new_text": "        eval_set=[(X_va, y_va)],"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 230,
+          "new_text": "        eval_metric=\"auc\","
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 231,
+          "new_text": "        callbacks=[lgb.early_stopping(200, verbose=False)],"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 232,
+          "new_text": "    )"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 251,
+          "prev_text": "model_full = lgb.LGBMClassifier(**lgb_params)",
+          "new_line_no": 257,
+          "new_text": "# Refit on full training using best number of trees if available"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 258,
+          "new_text": "n_estimators_final = lgb_params[\"n_estimators\"]"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 259,
+          "new_text": "if hasattr(model, \"best_iteration_\") and model.best_iteration_:"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 260,
+          "new_text": "    try:"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 261,
+          "new_text": "        n_estimators_final = int(model.best_iteration_)"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 262,
+          "new_text": "    except Exception:"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 263,
+          "new_text": "        n_estimators_final = lgb_params[\"n_estimators\"]"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 264,
+          "new_text": ""
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 265,
+          "new_text": "full_params = dict(lgb_params)"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 266,
+          "new_text": "full_params[\"n_estimators\"] = n_estimators_final"
+        },
+        {
+          "change_type": "insert",
+          "prev_line_no": null,
+          "prev_text": "",
+          "new_line_no": 267,
+          "new_text": "model_full = lgb.LGBMClassifier(**full_params)"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 267,
+          "prev_text": "nb_low = max(0.31, round(best_thr - 0.10, 2))",
+          "new_line_no": 283,
+          "new_text": "nb_low = 0.31"
+        },
+        {
+          "change_type": "replace",
+          "prev_line_no": 268,
+          "prev_text": "nb_high = min(0.80, round(best_thr + 0.10, 2))",
+          "new_line_no": 284,
+          "new_text": "nb_high = round(best_thr + 0.11, 2)"
+        }
+      ],
+      "summary": {
+        "replaced": 7,
+        "inserted": 16,
+        "deleted": 0,
+        "total": 23
+      },
+      "missing_code_snapshot": false
+    }
+  ]
+}

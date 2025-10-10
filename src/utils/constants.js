@@ -88,7 +88,9 @@ export const VECTOR_TYPES = [
 // Dashboard Modes
 export const DASHBOARD_MODES = {
   DATA: 'data',
-  VECTOR: 'vector'
+  VECTOR: 'vector',
+  PIPELINE: 'pipeline',
+  MODEL: 'model'
 };
 
 // View Modes for Vector Dashboard

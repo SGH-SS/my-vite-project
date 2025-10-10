@@ -10,6 +10,7 @@ import ThemeToggle from './components/shared/ThemeToggle';
 import DataDashboard from './components/data-dashboard/DataDashboard';
 import VectorDashboard from './components/vector-dashboard/VectorDashboard';
 import PipelineDashboard from './components/PipelineDashboard';
+import ModelTraining from './components/model';
 
 // Original Monolithic Dashboard Component
 import OriginalTradingDashboard from './components/TradingDashboard';
@@ -101,9 +102,9 @@ function App() {
                       🧮 Vectors
                     </button>
                     <button
-                      onClick={() => setDashboardMode('pipeline')}
+                      onClick={() => setDashboardMode(DASHBOARD_MODES.PIPELINE)}
                       className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                        dashboardMode === 'pipeline'
+                        dashboardMode === DASHBOARD_MODES.PIPELINE
                           ? isDarkMode
                             ? 'bg-blue-600 text-white shadow-sm'
                             : 'bg-white text-blue-600 shadow-sm'
@@ -113,6 +114,20 @@ function App() {
                       }`}
                     >
                       ⚙️ Pipeline
+                    </button>
+                    <button
+                      onClick={() => setDashboardMode(DASHBOARD_MODES.MODEL)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                        dashboardMode === DASHBOARD_MODES.MODEL
+                          ? isDarkMode
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white text-blue-600 shadow-sm'
+                          : isDarkMode
+                            ? 'text-gray-300 hover:text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      🧪 Model Training
                     </button>
                   </div>
                 )}
@@ -176,7 +191,9 @@ function App() {
               ? <DataDashboard isDarkMode={isDarkMode} />
               : dashboardMode === DASHBOARD_MODES.VECTOR
                 ? <VectorDashboard isDarkMode={isDarkMode} />
-                : <PipelineDashboard isDarkMode={isDarkMode} />
+                : dashboardMode === DASHBOARD_MODES.PIPELINE
+                  ? <PipelineDashboard isDarkMode={isDarkMode} />
+                  : <ModelTraining isDarkMode={isDarkMode} />
           )}
         </main>
       </div>
