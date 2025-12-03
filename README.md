@@ -3,7 +3,7 @@
 **An institutional-grade, agentic trading platform fusing Generative AI with high-frequency quantitative analysis.**
 
 [![System Status](https://img.shields.io/badge/System-Online-success)](https://github.com/yourusername/daygent)
-[![Architecture](https://img.shields.io/badge/Architecture-Monolithic%20Event%20Loop-blue)](https://github.com/yourusername/daygent)
+[![Architecture](https://img.shields.io/badge/Architecture-Unified%20Event%20Loop-blue)](https://github.com/yourusername/daygent)
 [![AI Core](https://img.shields.io/badge/AI%20Core-Transformer%20%2B%20LightGBM%20%2B%20RL-purple)](https://github.com/yourusername/daygent)
 
 ---
@@ -41,9 +41,9 @@ By integrating **Vector-Based Pattern Recognition**, **Large Language Models (LL
 
 ---
 
-## 🏗️ The Platform: Monolithic Implementation
+## 🏗️ The Platform: Unified Core Architecture
 
-While the Intelligence Engines provide the "Brain," the **Daygent Monolith** provides the "Body." The system is architected as a high-performance React 19 application backed by a unified FastAPI server, seamlessly integrating **six specialized dashboards** into a single event loop.
+While the Intelligence Engines provide the "Brain," the **Daygent Core** provides the "Body." The system is architected as a high-performance React 19 application backed by a unified FastAPI server, seamlessly integrating **six specialized dashboards** into a single event loop.
 
 ### 🖥️ Integrated Dashboard Suite
 
@@ -85,7 +85,7 @@ Daygent doesn't just look at price; it *embeds* it.
 
 ## ⚡ Technical Architecture
 
-Built on a **high-frequency monolithic architecture** to minimize latency between inference and action.
+Built on a **high-frequency unified architecture** to minimize latency between inference and action.
 
 | Component | Technology Stack | Capability |
 | :--- | :--- | :--- |
