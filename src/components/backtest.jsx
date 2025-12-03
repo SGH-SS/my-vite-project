@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createChart, CandlestickSeries, ColorType } from 'lightweight-charts';
 import InfoTooltip from './shared/InfoTooltip.jsx';
+import TrainingConfigModal from './TrainingConfigModal.jsx';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
 import { API_BASE_URL, FETCH_MODES, DATE_RANGE_TYPES } from '../utils/constants';
@@ -933,6 +934,11 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
   const [speedMs, setSpeedMs] = useState(1000);
   const [stepSize, setStepSize] = useState(1);
   const [loopPlayback, setLoopPlayback] = useState(false);
+  
+  // Train mode state
+  const [isTrainMode, setIsTrainMode] = useState(false);
+  const [showTrainingModal, setShowTrainingModal] = useState(false);
+  const [selectedTrainingCandle, setSelectedTrainingCandle] = useState(null);
 
 
   // Get current candle for live predictions
@@ -950,6 +956,38 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
       close: parseFloat(c.close)
     }));
   }, [fullData, currentIndex]);
+
+  // Handle chart click in train mode
+  const handleChartClick = useCallback((event) => {
+    if (!isTrainMode || !chartRef.current || !fullData || fullData.length === 0) return;
+    
+    const containerRect = chartContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    
+    try {
+      // Convert screen X coordinate to logical coordinate
+      const timeScale = chartRef.current.timeScale();
+      const logical = timeScale.coordinateToLogical(event.clientX - containerRect.left);
+      
+      if (logical === null) return;
+      
+      // Find the closest candle
+      const candleIndex = Math.round(logical);
+      
+      if (candleIndex >= 0 && candleIndex < visibleCandles.length) {
+        // Map back to fullData index
+        const fullDataIndex = Math.min(currentIndex + 1, fullData.length) - visibleCandles.length + candleIndex;
+        
+        if (fullDataIndex >= 0 && fullDataIndex < fullData.length) {
+          const clickedCandle = fullData[fullDataIndex];
+          setSelectedTrainingCandle(clickedCandle);
+          setShowTrainingModal(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling chart click:', error);
+    }
+  }, [isTrainMode, chartRef, fullData, currentIndex, visibleCandles]);
 
   const initializeChart = useCallback(() => {
     if (!chartContainerRef.current || visibleCandles.length === 0) return;
@@ -1273,8 +1311,39 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
         <div className={`px-6 py-4 border-b flex items-center justify-between transition-colors duration-200 ${
           isDarkMode ? 'border-gray-700' : 'border-gray-200'
         }`}>
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
             <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Price Chart</h3>
+            
+            {/* Train Mode Toggle Button */}
+            <button
+              onClick={() => {
+                setIsTrainMode(!isTrainMode);
+                if (isTrainMode) {
+                  // Exiting train mode - clear any selected candle
+                  setSelectedTrainingCandle(null);
+                  setShowTrainingModal(false);
+                }
+              }}
+              className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 text-sm font-medium ${
+                isTrainMode
+                  ? 'bg-green-500 text-white shadow-lg transform scale-105'
+                  : isDarkMode
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              title="Toggle training mode - click any candle to train a model"
+            >
+              <span className="mr-2">🎯</span>
+              {isTrainMode ? 'Train Mode: ON' : 'Train Mode'}
+            </button>
+            
+            {isTrainMode && (
+              <span className={`text-xs px-2 py-1 rounded ${
+                isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'
+              }`}>
+                Click any candle to train
+              </span>
+            )}
           </div>
           <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {currentIndex + 1} / {fullData.length} candles shown
@@ -1298,8 +1367,29 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
               className={`w-full h-96 rounded border transition-colors duration-200 ${
                 isDarkMode ? 'border-gray-600 bg-gray-900' : 'border-gray-200 bg-gray-50'
               }`}
-              style={{ minHeight: '400px' }}
-            />
+              style={{ minHeight: '400px', position: 'relative' }}
+            >
+              {/* Training Mode Click Overlay */}
+              {isTrainMode && (
+                <div
+                  className="absolute inset-0 z-10"
+                  style={{ 
+                    cursor: 'crosshair',
+                    backgroundColor: 'transparent'
+                  }}
+                  onClick={handleChartClick}
+                >
+                  {/* Train Mode Indicator */}
+                  <div className={`absolute top-2 left-2 px-3 py-1 rounded text-xs font-medium ${
+                    isDarkMode 
+                      ? 'bg-green-900/80 text-green-200 border border-green-600' 
+                      : 'bg-green-100/80 text-green-700 border border-green-300'
+                  }`}>
+                    🎯 Click a candle to train
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {/* Source indicator below chart */}
           {!loading && !error && fullData.length > 0 && (
@@ -1333,6 +1423,18 @@ const BacktestDashboard = ({ isDarkMode = false }) => {
         setCurrentIndex={setCurrentIndex}
         fullData={fullData}
       />
+      
+      {/* Training Configuration Modal */}
+      {showTrainingModal && selectedTrainingCandle && (
+        <TrainingConfigModal
+          selectedCandle={selectedTrainingCandle}
+          onClose={() => {
+            setShowTrainingModal(false);
+            setSelectedTrainingCandle(null);
+          }}
+          isDarkMode={isDarkMode}
+        />
+      )}
     </div>
   );
 };

@@ -21,8 +21,15 @@ router = APIRouter(prefix="/api/training", tags=["training"])
 # Root folder where training scripts live
 TRAINING_DIR = r"C:\Users\sham\Documents\agentic trading system\mcp\my-vite-project\src\components\v2 daygent models"
 
+# V3 POC training directory
+V3_TRAINING_DIR = r"C:\Users\sham\Documents\agentic trading system\mcp\my-vite-project\src\components\v3 models"
+POC_RUNS_DIR = os.path.join(V3_TRAINING_DIR, "on_demand_runs")
+
 # Generic launcher that opens Anaconda Prompt, activates env, and runs a script
 GENERIC_TRAINING_LAUNCHER = r"C:\Users\sham\Documents\agentic trading system\mcp\run_training_script.bat"
+
+# POC launcher for PowerShell
+POC_TRAINING_LAUNCHER = os.path.join(V3_TRAINING_DIR, "run_poc_training.bat")
 
 
 class TrainingScript(BaseModel):
@@ -312,3 +319,186 @@ async def get_latest_and_best_metrics():
             criterion=criterion
         ))
     return out
+
+
+# -----------------------------------------
+# POC Training Endpoints
+# -----------------------------------------
+
+class PocTrainingRequest(BaseModel):
+    candle_date: str  # ISO timestamp of selected candle
+    train_years: float = 3.0
+    test_window_size: int = 35
+    params: Dict[str, float] = {
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "min_child_samples": 20
+    }
+
+
+class PocRunResult(BaseModel):
+    started: bool
+    run_id: str
+    pid: int | None
+    message: str
+    output_dir: str
+
+
+@router.post("/run-poc", response_model=PocRunResult, summary="Run POC training on selected candle")
+async def run_poc_training(body: PocTrainingRequest):
+    """
+    Trigger POC training for a user-selected candle.
+    Spawns a PowerShell window with the training script.
+    """
+    if not os.path.exists(POC_TRAINING_LAUNCHER):
+        raise HTTPException(status_code=404, detail=f"POC launcher not found: {POC_TRAINING_LAUNCHER}")
+    
+    # Generate unique run ID
+    run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_dir = os.path.join(POC_RUNS_DIR, run_id)
+    
+    # Ensure on_demand_runs directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Extract params
+    params = body.params or {}
+    lr = params.get("learning_rate", 0.05)
+    leaves = int(params.get("num_leaves", 31))
+    depth = int(params.get("max_depth", 6))
+    samples = int(params.get("min_child_samples", 20))
+    
+    try:
+        # Spawn PowerShell with the launcher bat file
+        # Arguments: candle_date, train_years, test_window_size, lr, leaves, depth, samples, output_dir
+        process = subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoExit",
+                "-Command",
+                f'cd "{V3_TRAINING_DIR}"; '
+                f'python train_poc_simple.py '
+                f'--selected_candle_date "{body.candle_date}" '
+                f'--train_years {body.train_years} '
+                f'--test_window_size {body.test_window_size} '
+                f'--learning_rate {lr} '
+                f'--num_leaves {leaves} '
+                f'--max_depth {depth} '
+                f'--min_child_samples {samples} '
+                f'--output_dir "{output_dir}"'
+            ],
+            creationflags=subprocess.CREATE_NEW_CONSOLE
+        )
+        
+        return PocRunResult(
+            started=True,
+            run_id=run_id,
+            pid=process.pid,
+            message=f"POC training started for candle {body.candle_date}",
+            output_dir=output_dir
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start POC training: {str(e)}")
+
+
+class PocRun(BaseModel):
+    run_id: str
+    timestamp: str
+    candle_date: Optional[str] = None
+    status: str  # "completed", "running", "failed"
+    train_metrics: Optional[Dict[str, Any]] = None
+    test_metrics: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None
+    artifact_paths: Optional[Dict[str, str]] = None
+
+
+def _parse_poc_run(run_dir: str) -> Optional[PocRun]:
+    """Parse a POC run directory and extract metadata."""
+    run_id = os.path.basename(run_dir)
+    
+    # Look for results and metadata files
+    results_files = [f for f in os.listdir(run_dir) if f.startswith("results_poc_") and f.endswith(".json")]
+    meta_files = [f for f in os.listdir(run_dir) if f.startswith("run_meta_") and f.endswith(".json")]
+    
+    if not results_files:
+        # Training might still be running or failed
+        return PocRun(
+            run_id=run_id,
+            timestamp=run_id,
+            status="running",
+        )
+    
+    # Load results
+    results_path = os.path.join(run_dir, results_files[0])
+    try:
+        with open(results_path, 'r') as f:
+            results = json.load(f)
+        
+        meta_path = os.path.join(run_dir, meta_files[0]) if meta_files else None
+        meta = {}
+        if meta_path and os.path.exists(meta_path):
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+        
+        return PocRun(
+            run_id=run_id,
+            timestamp=results.get("run_timestamp_utc", run_id),
+            candle_date=results.get("config", {}).get("selected_candle_date"),
+            status=meta.get("status", "completed"),
+            train_metrics=results.get("metrics", {}).get("train"),
+            test_metrics=results.get("metrics", {}).get("test"),
+            config=results.get("config"),
+            artifact_paths=results.get("artifacts"),
+        )
+    except Exception as e:
+        print(f"Error parsing POC run {run_id}: {e}")
+        return PocRun(
+            run_id=run_id,
+            timestamp=run_id,
+            status="failed",
+        )
+
+
+@router.get("/poc-runs", response_model=List[PocRun], summary="List all POC training runs")
+async def list_poc_runs():
+    """List all completed and running POC training runs."""
+    if not os.path.exists(POC_RUNS_DIR):
+        return []
+    
+    runs = []
+    try:
+        for entry in os.listdir(POC_RUNS_DIR):
+            run_dir = os.path.join(POC_RUNS_DIR, entry)
+            if os.path.isdir(run_dir):
+                poc_run = _parse_poc_run(run_dir)
+                if poc_run:
+                    runs.append(poc_run)
+    except Exception as e:
+        print(f"Error listing POC runs: {e}")
+    
+    # Sort by timestamp descending (newest first)
+    runs.sort(key=lambda r: r.timestamp, reverse=True)
+    
+    return runs
+
+
+@router.get("/poc-runs/{run_id}", response_model=PocRun, summary="Get details for a specific POC run")
+async def get_poc_run(run_id: str):
+    """Get detailed information for a specific POC training run."""
+    run_dir = os.path.join(POC_RUNS_DIR, run_id)
+    
+    if not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail=f"POC run not found: {run_id}")
+    
+    poc_run = _parse_poc_run(run_dir)
+    if not poc_run:
+        raise HTTPException(status_code=500, detail=f"Failed to parse POC run: {run_id}")
+    
+    return poc_run
+
+
+@router.get("/latest-poc-run", response_model=Optional[PocRun], summary="Get the most recent POC run")
+async def get_latest_poc_run():
+    """Get the most recent POC training run (for polling after training starts)."""
+    runs = await list_poc_runs()
+    return runs[0] if runs else None

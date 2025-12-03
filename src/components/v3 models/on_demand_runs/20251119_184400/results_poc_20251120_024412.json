@@ -1,0 +1,76 @@
+{
+  "config": {
+    "selected_candle_date": "2025-04-09 13:30:00+00:00",
+    "train_years": 3.0,
+    "test_window_size": 35,
+    "params": {
+      "learning_rate": 0.05,
+      "num_leaves": 31,
+      "max_depth": 6,
+      "min_child_samples": 20
+    }
+  },
+  "data_splits": {
+    "train_size": 752,
+    "test_size": 35,
+    "train_start": "2022-04-11 13:30:00+00:00",
+    "train_end": "2025-04-09 13:30:00+00:00",
+    "test_start": "2025-04-10 13:30:00+00:00",
+    "test_end": "2025-05-30 13:30:00+00:00",
+    "train_class_dist": {
+      "pos": 400,
+      "neg": 352,
+      "pos_rate": 0.5319148936170213
+    },
+    "test_class_dist": {
+      "pos": 24,
+      "neg": 11,
+      "pos_rate": 0.6857142857142857
+    }
+  },
+  "metrics": {
+    "train": {
+      "best_threshold": 0.51,
+      "accuracy": 0.6409574468085106,
+      "precision": 0.6083333333333333,
+      "recall": 0.9125,
+      "f1": 0.73,
+      "balanced_accuracy": 0.6224431818181818,
+      "mcc": 0.30427656903304257,
+      "auc": 0.7103728693181817
+    },
+    "test": {
+      "threshold_used": 0.51,
+      "accuracy": 0.6,
+      "precision": 0.65625,
+      "recall": 0.875,
+      "f1": 0.75,
+      "balanced_accuracy": 0.4375,
+      "mcc": -0.2072890493972125,
+      "auc": 0.6420454545454546
+    }
+  },
+  "artifacts": {
+    "model": "model_poc_20251120_024412.joblib",
+    "scaler": "scaler_poc_20251120_024412.joblib"
+  },
+  "run_timestamp_utc": "20251120_024412",
+  "feature_names": [
+    "raw_o",
+    "raw_h",
+    "raw_l",
+    "raw_c",
+    "raw_v",
+    "iso_0",
+    "iso_1",
+    "iso_2",
+    "iso_3",
+    "tf_1d",
+    "tf_4h",
+    "hl_range",
+    "price_change",
+    "upper_shadow",
+    "lower_shadow",
+    "volume_m"
+  ]
+}

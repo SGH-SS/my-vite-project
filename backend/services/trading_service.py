@@ -153,6 +153,73 @@ class TradingDataService:
             logger.error(f"Error fetching table list: {e}")
             raise
 
+    def get_hybrid_date_range(self, db: Session, symbol: str, timeframe: str) -> Optional[dict]:
+        """Get the actual date range spanning both backtest and fronttest schemas"""
+        table_name = f"{symbol}_{timeframe}"
+        
+        try:
+            # Check backtest schema
+            bt_query = text(f"""
+                SELECT MIN(timestamp) as earliest, MAX(timestamp) as latest, COUNT(*) as count
+                FROM {self.schema}."{table_name}"
+            """)
+            bt_result = db.execute(bt_query).fetchone()
+            
+            # Check fronttest schema
+            ft_query = text(f"""
+                SELECT MIN(timestamp) as earliest, MAX(timestamp) as latest, COUNT(*) as count
+                FROM {self.fronttest_schema}."{table_name}"
+            """)
+            try:
+                ft_result = db.execute(ft_query).fetchone()
+            except Exception:
+                # Fronttest table doesn't exist
+                ft_result = None
+            
+            if not bt_result or bt_result[0] is None:
+                if ft_result and ft_result[0] is not None:
+                    # Only fronttest data exists
+                    return {
+                        'earliest': ft_result[0],
+                        'latest': ft_result[1],
+                        'count': ft_result[2]
+                    }
+                return None
+            
+            # Combine ranges
+            earliest = bt_result[0]
+            latest = bt_result[1]
+            count = bt_result[2] or 0
+            
+            if ft_result and ft_result[0] is not None:
+                # Take earliest from backtest, latest from fronttest
+                if ft_result[0] < earliest:
+                    earliest = ft_result[0]
+                if ft_result[1] > latest:
+                    latest = ft_result[1]
+                count += (ft_result[2] or 0)
+                
+                # Subtract 1 if there's a duplicate boundary candle
+                # (Check if last backtest timestamp equals first fronttest timestamp)
+                boundary_check = text(f"""
+                    SELECT 
+                        (SELECT MAX(timestamp) FROM {self.schema}."{table_name}") as bt_last,
+                        (SELECT MIN(timestamp) FROM {self.fronttest_schema}."{table_name}") as ft_first
+                """)
+                boundary_result = db.execute(boundary_check).fetchone()
+                if boundary_result and boundary_result[0] == boundary_result[1]:
+                    count -= 1
+            
+            return {
+                'earliest': earliest,
+                'latest': latest,
+                'count': count
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error getting hybrid date range for {symbol}_{timeframe}: {e}")
+            return None
+
     def get_database_stats(self, db: Session) -> DatabaseStats:
         """Get overall database statistics"""
         tables = self.get_available_tables(db)
@@ -445,10 +512,35 @@ class TradingDataService:
         }
 
     def get_latest_data_point(self, db: Session, symbol: str, timeframe: str) -> Optional[TradingDataPoint]:
-        """Get the most recent data point for a symbol/timeframe"""
+        """Get the most recent data point for a symbol/timeframe (checks fronttest first, then backtest)"""
         table_name = f"{symbol}_{timeframe}"
         
-        query = text(f"""
+        # Try fronttest schema first (has most recent data)
+        ft_query = text(f"""
+            SELECT symbol, timestamp, open, high, low, close, volume
+            FROM {self.fronttest_schema}."{table_name}"
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """)
+        
+        try:
+            ft_result = db.execute(ft_query).fetchone()
+            if ft_result:
+                return TradingDataPoint(
+                    symbol=ft_result[0],
+                    timestamp=ft_result[1],
+                    open=ft_result[2],
+                    high=ft_result[3],
+                    low=ft_result[4],
+                    close=ft_result[5],
+                    volume=ft_result[6]
+                )
+        except Exception:
+            # Fronttest table doesn't exist, fall back to backtest
+            pass
+        
+        # Fall back to backtest schema
+        bt_query = text(f"""
             SELECT symbol, timestamp, open, high, low, close, volume
             FROM {self.schema}."{table_name}"
             ORDER BY timestamp DESC
@@ -456,16 +548,16 @@ class TradingDataService:
         """)
         
         try:
-            result = db.execute(query).fetchone()
-            if result:
+            bt_result = db.execute(bt_query).fetchone()
+            if bt_result:
                 return TradingDataPoint(
-                    symbol=result[0],
-                    timestamp=result[1],
-                    open=result[2],
-                    high=result[3],
-                    low=result[4],
-                    close=result[5],
-                    volume=result[6]
+                    symbol=bt_result[0],
+                    timestamp=bt_result[1],
+                    open=bt_result[2],
+                    high=bt_result[3],
+                    low=bt_result[4],
+                    close=bt_result[5],
+                    volume=bt_result[6]
                 )
             return None
             

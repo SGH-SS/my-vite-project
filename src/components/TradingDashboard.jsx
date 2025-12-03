@@ -3062,10 +3062,12 @@ const TradingDashboard = () => {
   const fetchTradingData = async () => {
     setLoading(true);
     console.log(`🚀 fetchTradingData called - Page: ${currentPage}, Symbol: ${selectedSymbol}, Timeframe: ${selectedTimeframe}, RowLimit: ${rowLimit}, SortOrder: ${sortOrder}, FetchMode: ${fetchMode}, DateRangeType: ${dateRangeType}`);
-    try {
+    
+    // Helper that performs the original /data fetch with pagination parameters
+    const fetchFromStandardEndpoint = async () => {
       let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
       let queryParams = new URLSearchParams();
-      let offset = 0;
+      let localOffset = 0;
 
       if (fetchMode === FETCH_MODES.DATE_RANGE) {
         // Use date range parameters
@@ -3092,48 +3094,48 @@ const TradingDashboard = () => {
         // Set a reasonable limit to avoid overwhelming the UI
         queryParams.append('limit', '10000');
         // For date range mode, we don't use pagination offset
-        offset = 0;
-             } else {
-         // Use record limit mode (original logic)
-         queryParams.append('limit', rowLimit.toString());
-         
-         // Strategy: For oldest data, we need to get the very first records from the database
-         // For newest data, we get the most recent records
-         offset = (currentPage - 1) * rowLimit;
-       }
+        localOffset = 0;
+      } else {
+        // Use record limit mode (original logic)
+        queryParams.append('limit', rowLimit.toString());
+        
+        // Strategy: For oldest data, we need to get the very first records from the database
+        // For newest data, we get the most recent records
+        localOffset = (currentPage - 1) * rowLimit;
+      }
 
-              // Add offset for pagination (only in record limit mode)
-       if (fetchMode !== FETCH_MODES.DATE_RANGE) {
-         queryParams.append('offset', offset.toString());
-       }
+      // Add offset for pagination (only in record limit mode)
+      if (fetchMode !== FETCH_MODES.DATE_RANGE) {
+        queryParams.append('offset', localOffset.toString());
+      }
 
-       // Add sorting parameters
-       queryParams.append('order', sortOrder);
-       queryParams.append('sort_by', sortColumn);
+      // Add sorting parameters
+      queryParams.append('order', sortOrder);
+      queryParams.append('sort_by', sortColumn);
 
-       const finalUrl = `${url}?${queryParams.toString()}`;
-       
-       if (sortOrder === 'asc') {
-         console.log(`🟢 ASCENDING: Requesting OLDEST records`);
-       } else {
-         console.log(`🔵 DESCENDING: Requesting NEWEST records`);
-       }
-       console.log('API URL:', finalUrl);
-       
-       const response = await fetch(finalUrl);
-       if (!response.ok) {
-         throw new Error(`HTTP error! status: ${response.status}`);
-       }
-       const text = await response.text();
-       if (!text) {
-         throw new Error('Empty response from server');
-       }
-       var data = JSON.parse(text);
-       var fetchUrl = finalUrl;
+      const finalUrl = `${url}?${queryParams.toString()}`;
       
+      if (sortOrder === 'asc') {
+        console.log(`🟢 ASCENDING: Requesting OLDEST records`);
+      } else {
+        console.log(`🔵 DESCENDING: Requesting NEWEST records`);
+      }
+      console.log('API URL:', finalUrl);
+      
+      const response = await fetch(finalUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response from server');
+      }
+      let standardData = JSON.parse(text);
+      let standardFetchUrl = finalUrl;
+     
       // If we're on ascending and still getting recent data, try a different approach
-      if (sortOrder === 'asc' && data.data && data.data.length > 0) {
-        const firstTimestamp = new Date(data.data[0].timestamp);
+      if (sortOrder === 'asc' && standardData.data && standardData.data.length > 0) {
+        const firstTimestamp = new Date(standardData.data[0].timestamp);
         const currentYear = new Date().getFullYear();
         const dataYear = firstTimestamp.getFullYear();
         
@@ -3162,8 +3164,8 @@ const TradingDashboard = () => {
               // If we got older data, use it
               if (altFirstTimestamp < firstTimestamp) {
                 console.log('✅ Found older data with large offset approach');
-                data = altData;
-                fetchUrl = alternativeUrl;
+                standardData = altData;
+                standardFetchUrl = alternativeUrl;
               }
             }
           } catch (e) {
@@ -3173,7 +3175,7 @@ const TradingDashboard = () => {
       }
       
       // Estimate total count
-      if (!data.total_count) {
+      if (!standardData.total_count) {
         // Try to get a better estimate of total records
         try {
           const countResponse = await fetch(`${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}?limit=1&count_only=true`);
@@ -3181,21 +3183,21 @@ const TradingDashboard = () => {
             const countText = await countResponse.text();
             if (countText) {
               const countData = JSON.parse(countText);
-              data.total_count = countData.total_count || countData.count || data.count || 50000; // Better fallback
+              standardData.total_count = countData.total_count || countData.count || standardData.count || 50000; // Better fallback
             }
           }
         } catch (e) {
           console.warn('Failed to get count estimate:', e);
-          data.total_count = data.count || 50000; // Fallback estimate
+          standardData.total_count = standardData.count || 50000; // Fallback estimate
         }
       }
       
       // Check if backend properly handled our sort order
       let backendHandledSorting = false;
       
-      if (data.data && Array.isArray(data.data) && data.data.length > 1) {
-        const firstTimestamp = new Date(data.data[0].timestamp);
-        const lastTimestamp = new Date(data.data[data.data.length - 1].timestamp);
+      if (standardData.data && Array.isArray(standardData.data) && standardData.data.length > 1) {
+        const firstTimestamp = new Date(standardData.data[0].timestamp);
+        const lastTimestamp = new Date(standardData.data[standardData.data.length - 1].timestamp);
         
         if (sortOrder === 'asc') {
           // For ascending, first should be older than last
@@ -3206,7 +3208,86 @@ const TradingDashboard = () => {
         }
       }
 
-      console.log(`Backend handled sorting properly: ${backendHandledSorting}`);
+      console.log(`Backend handled sorting properly (standard endpoint): ${backendHandledSorting}`);
+
+      return {
+        data: standardData,
+        fetchUrl: standardFetchUrl,
+        offset: localOffset,
+        backendHandledSorting
+      };
+    };
+
+    try {
+      let data = null;
+      let fetchUrl = null;
+      let offset = 0;
+      let backendHandledSorting = false;
+      let usedHybrid = false;
+
+      // --- 1) Try hybrid backtest+fronttest endpoint first ---
+      try {
+        const hybridParams = new URLSearchParams();
+
+        if (fetchMode === FETCH_MODES.DATE_RANGE) {
+          switch (dateRangeType) {
+            case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+              if (endDate) {
+                hybridParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_DATE:
+              if (startDate) {
+                hybridParams.append('start_date', startDate);
+              }
+              if (endDate) {
+                hybridParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_LATEST:
+              if (startDate) {
+                hybridParams.append('start_date', startDate);
+              }
+              break;
+          }
+        }
+
+        // Request a generous slice so we can paginate client-side while still
+        // spanning the backtest→fronttest boundary.
+        const HYBRID_LIMIT = 100000;
+        hybridParams.append('limit', HYBRID_LIMIT.toString());
+
+        const hybridUrl = `${API_BASE_URL}/hybrid/${selectedSymbol}/${selectedTimeframe}?${hybridParams.toString()}`;
+        console.log('🧪 Attempting hybrid trading data fetch:', hybridUrl);
+
+        const hybridResponse = await fetch(hybridUrl);
+        if (hybridResponse.ok) {
+          const text = await hybridResponse.text();
+          if (text) {
+            data = JSON.parse(text);
+            fetchUrl = hybridUrl;
+            usedHybrid = true;
+            offset = 0; // pagination is handled client-side for hybrid
+            console.log('✅ Hybrid trading data fetched:', data.data?.length, 'rows');
+          }
+        } else {
+          console.warn(`Hybrid endpoint returned ${hybridResponse.status}, falling back to /data`);
+        }
+      } catch (hybridErr) {
+        console.warn('Hybrid fetch failed, falling back to /data:', hybridErr);
+      }
+
+      // --- 2) Fallback to original /data endpoint if hybrid not available ---
+      if (!data) {
+        const standardResult = await fetchFromStandardEndpoint();
+        data = standardResult.data;
+        fetchUrl = standardResult.fetchUrl;
+        offset = standardResult.offset;
+        backendHandledSorting = standardResult.backendHandledSorting;
+      } else {
+        // Hybrid endpoint always returns ascending by timestamp
+        backendHandledSorting = true;
+      }
 
       if (data.data && Array.isArray(data.data)) {
         let sortedData = [...data.data];
@@ -3236,8 +3317,24 @@ const TradingDashboard = () => {
           if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
           return 0;
         });
+
+        // For hybrid we keep the full sorted array for range/debug, but page
+        // the visible rows on the client side.
+        let rangeSource = sortedData;
+
+        if (usedHybrid) {
+          const totalCount = sortedData.length;
+          const startIndex = (currentPage - 1) * rowLimit;
+          const endIndex = startIndex + rowLimit;
+          const pageData = sortedData.slice(startIndex, endIndex);
+
+          data.data = pageData;
+          data.count = pageData.length;
+          data.total_count = totalCount;
+        } else {
+          data.data = sortedData;
+        }
         
-        data.data = sortedData;
         console.log(`✅ Sorting complete. Sample data after sort:`, sortedData.slice(0, 3).map(row => ({ [sortColumn]: row[sortColumn] })));
         
         // Enhanced debug information
@@ -3247,24 +3344,24 @@ const TradingDashboard = () => {
           requestedData: sortOrder === 'asc' ? 'OLDEST' : 'NEWEST',
           rowLimit: rowLimit,
           currentPage: currentPage,
-          offset: offset,
+          offset: usedHybrid ? (currentPage - 1) * rowLimit : offset,
           apiUrl: fetchUrl,
           backendHandledSorting: backendHandledSorting,
-          actualDataRange: data.data.length > 0 ? {
-            first: data.data[0].timestamp,
-            last: data.data[data.data.length - 1].timestamp,
-            firstYear: new Date(data.data[0].timestamp).getFullYear(),
-            lastYear: new Date(data.data[data.data.length - 1].timestamp).getFullYear(),
-            span: `${new Date(data.data[0].timestamp).toLocaleDateString()} to ${new Date(data.data[data.data.length - 1].timestamp).toLocaleDateString()}`
+          actualDataRange: rangeSource.length > 0 ? {
+            first: rangeSource[0].timestamp,
+            last: rangeSource[rangeSource.length - 1].timestamp,
+            firstYear: new Date(rangeSource[0].timestamp).getFullYear(),
+            lastYear: new Date(rangeSource[rangeSource.length - 1].timestamp).getFullYear(),
+            span: `${new Date(rangeSource[0].timestamp).toLocaleDateString()} to ${new Date(rangeSource[rangeSource.length - 1].timestamp).toLocaleDateString()}`
           } : null,
           totalRecords: data.total_count || data.count,
           dataQuality: (() => {
             if (sortOrder === 'desc') return 'GOOD (Recent data)';
             
             // For ascending, check if we're actually getting properly sorted data
-            if (data.data.length > 1) {
-              const firstTime = new Date(data.data[0].timestamp);
-              const lastTime = new Date(data.data[data.data.length - 1].timestamp);
+            if (rangeSource.length > 1) {
+              const firstTime = new Date(rangeSource[0].timestamp);
+              const lastTime = new Date(rangeSource[rangeSource.length - 1].timestamp);
               
               // If properly sorted ascending and we're on page 1, this should be good
               if (firstTime <= lastTime && currentPage === 1) {
@@ -3282,7 +3379,7 @@ const TradingDashboard = () => {
         });
       }
       
-      console.log(`📊 Setting trading data - Total Count: ${data.total_count}, Data Length: ${data.data?.length}, Current Page: ${currentPage}`);
+      console.log(`📊 Setting trading data - Total Count: ${data.total_count}, Data Length: ${data.data?.length}, Current Page: ${currentPage}, UsedHybrid: ${usedHybrid}`);
       setTradingData(data);
       setError(null);
     } catch (err) {

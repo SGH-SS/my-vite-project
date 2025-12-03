@@ -1,0 +1,12 @@
+{
+  "script_name": "train_poc_simple.py",
+  "run_timestamp_utc": "20251120_024821",
+  "run_id": "20251119_184817",
+  "selected_candle_date": "2024-12-18 14:30:00+00:00",
+  "artifacts": {
+    "model": "C:\\Users\\sham\\Documents\\agentic trading system\\mcp\\my-vite-project\\src\\components\\v3 models\\on_demand_runs\\20251119_184817\\model_poc_20251120_024821.joblib",
+    "scaler": "C:\\Users\\sham\\Documents\\agentic trading system\\mcp\\my-vite-project\\src\\components\\v3 models\\on_demand_runs\\20251119_184817\\scaler_poc_20251120_024821.joblib",
+    "results": "C:\\Users\\sham\\Documents\\agentic trading system\\mcp\\my-vite-project\\src\\components\\v3 models\\on_demand_runs\\20251119_184817\\results_poc_20251120_024821.json"
+  },
+  "status": "completed"
+}

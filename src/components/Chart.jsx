@@ -2403,83 +2403,196 @@ const TradingChartDashboard = ({
     // Note: We don't clear chartDataRef.current here because we might need it for highlighting
     
     try {
-      let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
-      let queryParams = new URLSearchParams();
+      let data = null;
+      let usedHybrid = false;
 
-      if (fetchMode === FETCH_MODES.DATE_RANGE) {
-        // Use date range parameters
-        switch (dateRangeType) {
-          case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
-            if (endDate) {
-              queryParams.append('end_date', endDate);
-            }
-            break;
-          case DATE_RANGE_TYPES.DATE_TO_DATE:
-            if (startDate) {
-              queryParams.append('start_date', startDate);
-            }
-            if (endDate) {
-              queryParams.append('end_date', endDate);
-            }
-            break;
-          case DATE_RANGE_TYPES.DATE_TO_LATEST:
-            if (startDate) {
-              queryParams.append('start_date', startDate);
-            }
-            break;
+      // --- 1) Try hybrid backtest+fronttest endpoint first (for seamless live+historical data) ---
+      try {
+        const hybridParams = new URLSearchParams();
+
+        if (fetchMode === FETCH_MODES.DATE_RANGE) {
+          // Use date range parameters for hybrid as well
+          switch (dateRangeType) {
+            case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+              if (endDate) {
+                hybridParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_DATE:
+              if (startDate) {
+                hybridParams.append('start_date', startDate);
+              }
+              if (endDate) {
+                hybridParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_LATEST:
+              if (startDate) {
+                hybridParams.append('start_date', startDate);
+              }
+              break;
+          }
         }
-        // Set a reasonable limit to avoid overwhelming the chart
-        queryParams.append('limit', '10000');
-      } else {
-        // Use record limit mode
-        let limit = rowLimit;
+
+        // For hybrid we always request a reasonably large slice so we can
+        // derive the visible window (record limit / time range) on the client.
+        // This guarantees we span the backtest→fronttest boundary.
+        const HYBRID_LIMIT = 100000;
+        hybridParams.append('limit', HYBRID_LIMIT.toString());
+
+        const hybridUrl = `${API_BASE_URL}/hybrid/${selectedSymbol}/${selectedTimeframe}?${hybridParams.toString()}`;
+        console.log('🧪 Attempting hybrid data fetch for chart:', hybridUrl);
+
+        const hybridResponse = await fetch(hybridUrl);
+        if (hybridResponse.ok) {
+          data = await hybridResponse.json();
+          usedHybrid = true;
+          console.log('✅ Hybrid chart data fetched:', data.data?.length, 'candles');
+        } else {
+          console.warn(`Hybrid endpoint returned ${hybridResponse.status}, falling back to standard /data route`);
+        }
+      } catch (hybridErr) {
+        console.warn('Hybrid fetch failed, falling back to standard /data route:', hybridErr);
+      }
+
+      // --- 2) Fallback to original /data endpoint if hybrid not available ---
+      if (!data) {
+        let url = `${API_BASE_URL}/data/${selectedSymbol}/${selectedTimeframe}`;
+        let queryParams = new URLSearchParams();
+
+        if (fetchMode === FETCH_MODES.DATE_RANGE) {
+          // Use date range parameters
+          switch (dateRangeType) {
+            case DATE_RANGE_TYPES.EARLIEST_TO_DATE:
+              if (endDate) {
+                queryParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_DATE:
+              if (startDate) {
+                queryParams.append('start_date', startDate);
+              }
+              if (endDate) {
+                queryParams.append('end_date', endDate);
+              }
+              break;
+            case DATE_RANGE_TYPES.DATE_TO_LATEST:
+              if (startDate) {
+                queryParams.append('start_date', startDate);
+              }
+              break;
+          }
+          // Set a reasonable limit to avoid overwhelming the chart
+          queryParams.append('limit', '10000');
+        } else {
+          // Use record limit mode
+          let limit = rowLimit;
+          
+          // Adjust limit based on time range
+          switch (timeRange) {
+            case '1d':
+              limit = selectedTimeframe.includes('m') ? 1440 : 24; // minutes in day or hours
+              break;
+            case '7d':
+              limit = selectedTimeframe.includes('m') ? 10080 : 168; // 7 days worth
+              break;
+            case '30d':
+              limit = selectedTimeframe.includes('m') ? 43200 : 720; // 30 days worth
+              break;
+            case '90d':
+              limit = Math.min(90 * 24, 2000); // Cap at reasonable limit
+              break;
+            default:
+              limit = rowLimit;
+          }
+          queryParams.append('limit', limit.toString());
+        }
+
+        queryParams.append('order', sortOrder || 'desc');
+        queryParams.append('sort_by', 'timestamp');
+
+        const response = await fetch(`${url}?${queryParams.toString()}`);
         
-        // Adjust limit based on time range
-        switch (timeRange) {
-          case '1d':
-            limit = selectedTimeframe.includes('m') ? 1440 : 24; // minutes in day or hours
-            break;
-          case '7d':
-            limit = selectedTimeframe.includes('m') ? 10080 : 168; // 7 days worth
-            break;
-          case '30d':
-            limit = selectedTimeframe.includes('m') ? 43200 : 720; // 30 days worth
-            break;
-          case '90d':
-            limit = Math.min(90 * 24, 2000); // Cap at reasonable limit
-            break;
-          default:
-            limit = rowLimit;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-        queryParams.append('limit', limit.toString());
+        
+        data = await response.json();
+        console.log('📊 Chart data fetched successfully from /data:', data.data?.length, 'candles');
       }
 
-      queryParams.append('order', sortOrder || 'desc');
-      queryParams.append('sort_by', 'timestamp');
-
-      const response = await fetch(`${url}?${queryParams.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('📊 Chart data fetched successfully:', data.data?.length, 'candles');
-      
-      // Charts always need data in ascending time order for proper rendering
-      // The sortOrder affects which data is fetched (newest vs oldest records)
-      // but the chart must display them chronologically
+      // --- 3) Normalize data for chart display ---
       if (data.data && Array.isArray(data.data)) {
-        const sortedData = [...data.data];
-        sortedData.sort((a, b) => {
+        let workingData = [...data.data];
+
+        // Hybrid endpoint always returns ascending by timestamp, but we sort
+        // defensively here so fallback data is normalized the same way.
+        workingData.sort((a, b) => {
           const aTime = new Date(a.timestamp);
           const bTime = new Date(b.timestamp);
-          return aTime - bTime; // Always ascending for chart display
+          return aTime - bTime;
         });
-        
-        data.data = sortedData;
-        console.log('📊 Chart data sorted for display - Sort preference:', sortOrder, 'Data range:', 
-          data.data[0]?.timestamp, 'to', data.data[data.data.length - 1]?.timestamp);
+
+        // If we used the hybrid endpoint, we now apply the record limit / time
+        // range locally so we still honour the UI controls while spanning the
+        // backtest→fronttest boundary.
+        if (usedHybrid && fetchMode === FETCH_MODES.LIMIT) {
+          const latestTime = workingData.length > 0
+            ? new Date(workingData[workingData.length - 1].timestamp).getTime()
+            : null;
+
+          let filtered = workingData;
+
+          if (latestTime && timeRange !== 'all') {
+            let hoursBack = 0;
+            switch (timeRange) {
+              case '1d':
+                hoursBack = 24;
+                break;
+              case '7d':
+                hoursBack = 7 * 24;
+                break;
+              case '30d':
+                hoursBack = 30 * 24;
+                break;
+              case '90d':
+                hoursBack = 90 * 24;
+                break;
+              default:
+                hoursBack = 0;
+            }
+
+            if (hoursBack > 0) {
+              const threshold = latestTime - hoursBack * 60 * 60 * 1000;
+              filtered = workingData.filter(candle => {
+                const t = new Date(candle.timestamp).getTime();
+                return t >= threshold;
+              });
+            }
+          }
+
+          // Finally enforce the Data Limit (rowLimit) by taking the most recent
+          // candles from whatever range we ended up with.
+          if (filtered.length > rowLimit) {
+            filtered = filtered.slice(filtered.length - rowLimit);
+          }
+
+          workingData = filtered;
+        } else if (usedHybrid && fetchMode === FETCH_MODES.DATE_RANGE) {
+          // For DATE_RANGE + hybrid we already requested the appropriate
+          // start/end window on the server; just keep the sorted data.
+        }
+
+        data.data = workingData;
+
+        console.log(
+          '📊 Chart data prepared for display - Source:',
+          usedHybrid ? 'hybrid' : 'data',
+          'Range:',
+          data.data[0]?.timestamp,
+          'to',
+          data.data[data.data.length - 1]?.timestamp
+        );
       }
       
       setChartData(data);

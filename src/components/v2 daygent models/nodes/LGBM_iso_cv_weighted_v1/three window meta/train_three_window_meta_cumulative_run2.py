@@ -651,6 +651,27 @@ def parse_vec(value) -> Optional[np.ndarray]:
         return None
 
 
+
+# Helper: parse omit-folds input like "4" or "2,5"; returns sorted unique positive ints
+def _parse_omit_folds_input(text: Optional[str]) -> List[int]:
+    if not text:
+        return []
+    s = str(text).strip()
+    if s == "0":
+        return []
+    parts = [p.strip() for p in s.replace(";", ",").split(",") if p.strip()]
+    out: List[int] = []
+    for p in parts:
+        try:
+            v = int(p)
+            if v > 0:
+                out.append(v)
+        except Exception:
+            continue
+    # unique + sorted
+    return sorted(list({int(v) for v in out}))
+
+
 FEATURE_NAMES: List[str] = [
     "raw_o","raw_h","raw_l","raw_c","raw_v",
     "iso_0","iso_1","iso_2","iso_3",
@@ -3286,18 +3307,188 @@ def _heartbeat(label: str):
 
 
 # %% META-LEARNING
+# Optional prompt to omit specific folds from meta-learner training
+omit_env = os.getenv("MCP_OMIT_FOLDS", "").strip()
+omit_folds: List[int] = _parse_omit_folds_input(omit_env)
+if not omit_folds:
+    try:
+        user_in = input("Enter fold numbers to omit from meta-learning (e.g., 4 or 2,5) [0=keep all, x=search best omissions]: ").strip()
+    except Exception:
+        user_in = "0"
+    special_exhaustive_omit = (user_in.lower() == 'x')
+    if not special_exhaustive_omit:
+        omit_folds = _parse_omit_folds_input(user_in)
+    else:
+        omit_folds = []
+
+# Simple terminal progress bar
+def _progress_bar(current: int, total: int, label: str = ""):
+    try:
+        width = 28
+        total = max(1, int(total))
+        current = int(min(max(0, current), total))
+        ratio = current / float(total)
+        filled = int(width * ratio)
+        bar = '#' * filled + '-' * (width - filled)
+        sys.stdout.write(f"\r  {label} [{bar}] {current}/{total}")
+        sys.stdout.flush()
+        if current >= total:
+            sys.stdout.write("\n")
+    except Exception:
+        pass
+
+# Exhaustive omission search mode: only adv_chain_refined, then exit
+if 'special_exhaustive_omit' in locals() and special_exhaustive_omit:
+    try:
+        # Gather available fold ids
+        fold_ids_all = sorted({int(m.get("fold", -1)) for m in fold_meta if isinstance(m.get("fold", None), (int, np.integer)) and int(m.get("fold", -1)) > 0})
+    except Exception:
+        fold_ids_all = list(range(1, max(1, len(fold_meta)+1))) if isinstance(fold_meta, list) else []
+
+    # Base data & signatures
+    X_combined_df = pd.concat([X_train_df, X_pre_df], ignore_index=True) if len(X_pre_df) else X_train_df
+    y_combined = np.concatenate([y_train, y_pre]) if len(y_pre) else y_train
+    X_full_df = pd.concat([X_train_df, X_pre_df], ignore_index=True) if len(X_pre_df) else X_train_df
+    y_full = np.concatenate([y_train, y_pre]) if len(y_pre) else y_train
+    thr_final_eval = float(np.median(best_thr_list)) if len(best_thr_list) else 0.5
+
+    def _score_model_for_current_params(params_use: Dict[str, Any]) -> float:
+        try:
+            model = lgb.LGBMClassifier(**params_use)
+            model.fit(X_full_df, y_full)
+        except Exception:
+            return float('-inf')
+        window_scores: List[float] = []
+        for X_test_df, (_, y_test) in zip(X_tests_df, tests_Xy):
+            try:
+                proba = model.predict_proba(X_test_df)[:, 1] if len(X_test_df) else np.array([])
+                if len(proba):
+                    pred = (proba >= thr_final_eval).astype(int)
+                    acc_v = float(accuracy_score(y_test, pred))
+                    try:
+                        auc_v = float(roc_auc_score(y_test, proba)) if len(np.unique(y_test)) == 2 else None
+                    except Exception:
+                        auc_v = None
+                    try:
+                        mcc_v = float(matthews_corrcoef(y_test, pred))
+                    except Exception:
+                        mcc_v = float('nan')
+                    if auc_v is None or (isinstance(auc_v, float) and np.isnan(auc_v)):
+                        score_v = (mcc_v + acc_v) / 2.0
+                    else:
+                        score_v = (mcc_v + acc_v + auc_v) / 3.0
+                else:
+                    score_v = float('-inf')
+            except Exception:
+                score_v = float('-inf')
+            window_scores.append(score_v)
+        try:
+            return float(np.nanmean(window_scores)) if window_scores else float('-inf')
+        except Exception:
+            return float('-inf')
+
+    # 1-omit search
+    print("\n  🔬 Exhaustive omit search [omit 1 fold] — using adv_chain_refined only")
+    single_results: List[Dict[str, Any]] = []
+    total_single = len(fold_ids_all)
+    for idx, omit_id in enumerate(fold_ids_all, start=1):
+        _progress_bar(idx, total_single, label="1-omit testing")
+        fm = [m for m in fold_meta if int(m.get("fold", -1)) != int(omit_id)]
+        fm_sorted = sorted(
+            fm,
+            key=lambda m: 0 if m.get("param_source") == "search_known" else (1 if m.get("param_source") == "search" else 2)
+        )
+        adv = AdvancedMetaLearner()
+        try:
+            adv.fit(fm_sorted)
+        except Exception:
+            pass
+        sig_combined = compute_signature(X_combined_df, y_combined)
+        base_params = adv.predict_chain(sig_combined)
+        try:
+            refined_params = refine_params_local(X_full_df, y_full, X_pre_df, y_pre, thr_grid, base_params, timeout_s=30.0)
+        except Exception:
+            refined_params = base_params
+        score_avg = _score_model_for_current_params(refined_params)
+        single_results.append({"omit": [int(omit_id)], "score": float(score_avg)})
+
+    single_results_sorted = sorted(single_results, key=lambda r: r.get("score", float('-inf')), reverse=True)
+    if single_results_sorted:
+        best_single = single_results_sorted[0]
+        print(f"  ✓ Best single omit → fold {best_single['omit'][0]} | score={best_single['score']:.4f}")
+    else:
+        print("  ⚠️  No results in single-omit search")
+
+    # 2-omit combos
+    print("\n  🧪 Trying 2 omit combos (all pairs)...")
+    pair_results: List[Dict[str, Any]] = []
+    pairs = list(itertools.combinations(fold_ids_all, 2))
+    total_pairs = len(pairs)
+    for idx, (a, b) in enumerate(pairs, start=1):
+        _progress_bar(idx, total_pairs, label="2-omit testing")
+        fm = [m for m in fold_meta if int(m.get("fold", -1)) not in (int(a), int(b))]
+        fm_sorted = sorted(
+            fm,
+            key=lambda m: 0 if m.get("param_source") == "search_known" else (1 if m.get("param_source") == "search" else 2)
+        )
+        adv = AdvancedMetaLearner()
+        try:
+            adv.fit(fm_sorted)
+        except Exception:
+            pass
+        sig_combined = compute_signature(X_combined_df, y_combined)
+        base_params = adv.predict_chain(sig_combined)
+        try:
+            refined_params = refine_params_local(X_full_df, y_full, X_pre_df, y_pre, thr_grid, base_params, timeout_s=30.0)
+        except Exception:
+            refined_params = base_params
+        score_avg = _score_model_for_current_params(refined_params)
+        pair_results.append({"omit": [int(a), int(b)], "score": float(score_avg)})
+
+    pair_results_sorted = sorted(pair_results, key=lambda r: r.get("score", float('-inf')), reverse=True)[:3]
+    if pair_results_sorted:
+        print("  ✓ Top 3 omit pairs (by avg of MCC, ACC, AUC):")
+        for rank, res in enumerate(pair_results_sorted, start=1):
+            a, b = res['omit']
+            print(f"    {rank}. folds {a},{b} | score={res['score']:.4f}")
+    else:
+        print("  ⚠️  No results in 2-omit search")
+
+    # Terminate after exhaustive testing as requested
+    sys.stdout.flush()
+    sys.exit(0)
+
+# Build filtered fold meta list
+if isinstance(fold_meta, list) and len(fold_meta) > 0 and len(omit_folds) > 0:
+    fold_meta_filtered = [m for m in fold_meta if int(m.get("fold", -1)) not in set(omit_folds)]
+    # Also sort guidance priority as earlier
+    fold_meta_sorted = sorted(
+        fold_meta_filtered,
+        key=lambda m: 0 if m.get("param_source") == "search_known" else (1 if m.get("param_source") == "search" else 2)
+    )
+    print(f"  ⚙️  Omitting folds from meta-learning: {omit_folds} | using {len(fold_meta_sorted)}/{len(fold_meta)} folds")
+else:
+    fold_meta_sorted = sorted(
+        fold_meta,
+        key=lambda m: 0 if m.get("param_source") == "search_known" else (1 if m.get("param_source") == "search" else 2)
+    ) if isinstance(fold_meta, list) else []
+
 print("\n" + "="*70)
 print("  META-LEARNING: INFERRING FINAL HYPERPARAMETERS (TWO METHODS) — RUN2")
 print("="*70)
 hb_thread = threading.Thread(target=_heartbeat, args=("Working on meta-learning...",), daemon=True)
 hb_thread.start()
 
+# Refit basic meta-learner on filtered folds if possible
+if isinstance(fold_meta_sorted, list) and len(fold_meta_sorted) >= 2:
+    meta_learner.fit(fold_meta_sorted)
+
 # Try both Train+Pre-test and Pre-test-only signatures
-if len(fold_meta) >= 2 and meta_learner.fitted:
+if len(fold_meta_sorted) >= 2 and meta_learner.fitted:
     # Prefer guidance from folds where you searched despite known-bests
-    guided_from = next((m for m in reversed(fold_meta) if m.get("param_source") == "search_known"), None)
+    guided_from = next((m for m in reversed(fold_meta_sorted) if m.get("param_source") == "search_known"), None)
     if guided_from is None:
-        guided_from = next((m for m in reversed(fold_meta) if m.get("param_source") == "search"), None)
+        guided_from = next((m for m in reversed(fold_meta_sorted) if m.get("param_source") == "search"), None)
     
     # Method 1: Train + Pre-test combined
     X_combined_df = pd.concat([X_train_df, X_pre_df], ignore_index=True) if len(X_pre_df) else X_train_df
@@ -3319,7 +3510,7 @@ if len(fold_meta) >= 2 and meta_learner.fitted:
     }
     inferred_params_pretest = meta_learner.predict(sig_full_pretest)
     
-    print(f"✓ Using ML-based meta-learner (trained on {len(fold_meta)} folds)")
+    print(f"✓ Using ML-based meta-learner (trained on {len(fold_meta_sorted)} folds)")
     print(f"\n  Method 1 (Train+Pre-test signature):")
     for k in ["learning_rate","num_leaves","max_depth","min_child_samples"]:
         print(f"    {k}: {inferred_params_combined.get(k)}")
@@ -3335,7 +3526,7 @@ else:
 # Prepare advanced meta-learner using fold meta (train after basic meta learner fits)
 advanced_meta = AdvancedMetaLearner()
 try:
-    advanced_meta.fit(fold_meta)
+    advanced_meta.fit(fold_meta_sorted)
     mlp_count = len(advanced_meta.mlp_ensemble) if advanced_meta.fitted_mlp else 0
     tree_count = len(advanced_meta.tree_ensemble) if advanced_meta.fitted_tree else 0
     chain_fitted = 'yes' if advanced_meta.fitted_chain else 'no'

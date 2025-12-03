@@ -300,7 +300,7 @@ async def get_symbol_summary(
     symbol: str,
     db: Session = Depends(get_db)
 ):
-    """Get summary statistics for a symbol across all available timeframes"""
+    """Get summary statistics for a symbol across all available timeframes (includes hybrid backtest+fronttest ranges)"""
     try:
         tables = trading_service.get_available_tables(db)
         symbol_tables = [t for t in tables if t.symbol == symbol.lower()]
@@ -323,13 +323,33 @@ async def get_symbol_summary(
                 symbol=symbol.lower(),
                 timeframe=table.timeframe
             )
-            summary["timeframes"][table.timeframe] = {
-                "table_name": table.table_name,
-                "row_count": table.row_count,
-                "earliest_timestamp": table.earliest_timestamp,
-                "latest_timestamp": table.latest_timestamp,
-                "latest_data": latest.dict() if latest else None
-            }
+            
+            # Try to get hybrid date range (backtest + fronttest combined)
+            hybrid_range = trading_service.get_hybrid_date_range(
+                db=db,
+                symbol=symbol.lower(),
+                timeframe=table.timeframe
+            )
+            
+            # Use hybrid range if available, otherwise fall back to table metadata
+            if hybrid_range:
+                summary["timeframes"][table.timeframe] = {
+                    "table_name": table.table_name,
+                    "row_count": hybrid_range['count'],
+                    "earliest_timestamp": hybrid_range['earliest'],
+                    "latest_timestamp": hybrid_range['latest'],
+                    "latest_data": latest.dict() if latest else None,
+                    "is_hybrid": True  # Flag to indicate this includes fronttest data
+                }
+            else:
+                summary["timeframes"][table.timeframe] = {
+                    "table_name": table.table_name,
+                    "row_count": table.row_count,
+                    "earliest_timestamp": table.earliest_timestamp,
+                    "latest_timestamp": table.latest_timestamp,
+                    "latest_data": latest.dict() if latest else None,
+                    "is_hybrid": False
+                }
         
         return summary
     except HTTPException:
@@ -681,4 +701,112 @@ async def get_live_model_predictions(
         raise
     except Exception as e:
         logger.error(f"Error in live model predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/poc-predictions/{run_id}", summary="Run predictions using a POC model")
+async def get_poc_predictions(
+    run_id: str,
+    start_date: str,
+    end_date: str,
+    threshold: float = Query(default=0.5, ge=0.0, le=1.0),
+    db: Session = Depends(get_db)
+):
+    """
+    Run predictions using a trained POC model for SPY 1D candles in the specified date range.
+    
+    Args:
+        run_id: The POC training run identifier
+        start_date: Start date (YYYY-MM-DD format)
+        end_date: End date (YYYY-MM-DD format)
+        threshold: Classification threshold (default 0.5)
+    
+    Returns:
+        Predictions with probabilities and metadata
+    """
+    try:
+        # Import the model inference service
+        from services.model_inference import model_inference_service
+        
+        # Parse dates
+        try:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD or ISO format")
+        
+        # Fetch candles from database (SPY 1D only for POC)
+        try:
+            hybrid = trading_service.get_hybrid_backtest_fronttest(
+                db=db,
+                symbol="spy",
+                timeframe="1d",
+                limit=10000,
+                start_date=start_dt,
+                end_date=end_dt,
+                include_vectors=True,
+                order="asc"
+            )
+            
+            data_rows = []
+            for candle in hybrid.get("data", []):
+                c = candle.dict() if hasattr(candle, "dict") else candle
+                data_rows.append({
+                    "timestamp": c.get("timestamp").isoformat() if c.get("timestamp") else None,
+                    "open": float(c.get("open") or 0.0),
+                    "high": float(c.get("high") or 0.0),
+                    "low": float(c.get("low") or 0.0),
+                    "close": float(c.get("close") or 0.0),
+                    "volume": float(c.get("volume") or 0.0),
+                    "raw_ohlcv_vec": c.get("raw_ohlcv_vec"),
+                    "iso_ohlc": c.get("iso_ohlc"),
+                })
+            
+            if not data_rows:
+                return {
+                    "run_id": run_id,
+                    "symbol": "SPY",
+                    "timeframe": "1d",
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "predictions": [],
+                    "total_predictions": 0
+                }
+            
+            # Run predictions using POC model
+            predictions = model_inference_service.predict_poc(
+                run_id=run_id,
+                rows=data_rows,
+                threshold=threshold
+            )
+            
+            # Convert to serializable format
+            prediction_results = []
+            for pred in predictions:
+                prediction_results.append({
+                    "timestamp": pred.timestamp,
+                    "prediction": int(pred.pred),
+                    "probability": float(pred.proba),
+                    "confidence": float(pred.confidence),
+                })
+            
+            return {
+                "run_id": run_id,
+                "symbol": "SPY",
+                "timeframe": "1d",
+                "start_date": start_date,
+                "end_date": end_date,
+                "threshold": threshold,
+                "predictions": prediction_results,
+                "total_predictions": len(prediction_results),
+            }
+            
+        except Exception as e:
+            logger.error(f"Database error in POC predictions: {e}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in POC predictions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

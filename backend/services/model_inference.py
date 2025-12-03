@@ -52,6 +52,8 @@ class ModelInferenceService:
     def __init__(self) -> None:
         self._models: Dict[Tuple[str, str], Any] = {}
         self._scalers: Dict[Tuple[str, str], Any] = {}
+        self._poc_models: Dict[str, Any] = {}  # POC models keyed by run_id
+        self._poc_scalers: Dict[str, Any] = {}  # POC scalers keyed by run_id
         self._load_models()
 
     @staticmethod
@@ -112,6 +114,110 @@ class ModelInferenceService:
 
     def model_available(self, model_name: str, timeframe: str) -> bool:
         return self._models.get((model_name, timeframe)) is not None
+    
+    def load_poc_model(self, run_id: str) -> bool:
+        """Load a POC model and scaler from the on_demand_runs folder.
+        
+        Returns True if successfully loaded, False otherwise.
+        """
+        # Path to POC runs
+        poc_runs_dir = self._project_root() / "src" / "components" / "v3 models" / "on_demand_runs"
+        run_dir = poc_runs_dir / run_id
+        
+        if not run_dir.exists():
+            print(f"POC run directory not found: {run_dir}")
+            return False
+        
+        try:
+            # Find model and scaler files
+            model_files = list(run_dir.glob("model_poc_*.joblib"))
+            scaler_files = list(run_dir.glob("scaler_poc_*.joblib"))
+            
+            if not model_files or not scaler_files:
+                print(f"POC artifacts not found in {run_dir}")
+                return False
+            
+            # Load model
+            model_path = model_files[0]
+            self._poc_models[run_id] = joblib.load(str(model_path))
+            
+            # Load scaler
+            scaler_path = scaler_files[0]
+            self._poc_scalers[run_id] = joblib.load(str(scaler_path))
+            
+            print(f"✅ POC model loaded: {run_id}")
+            return True
+            
+        except Exception as e:
+            print(f"Error loading POC model {run_id}: {e}")
+            return False
+    
+    def poc_model_available(self, run_id: str) -> bool:
+        """Check if a POC model is loaded."""
+        if run_id not in self._poc_models:
+            # Try to load it
+            return self.load_poc_model(run_id)
+        return True
+    
+    def predict_poc(
+        self,
+        run_id: str,
+        rows: List[Dict[str, Any]],
+        threshold: float = 0.5
+    ) -> List[PredictionResult]:
+        """Run predictions using a POC model for given rows.
+        
+        Args:
+            run_id: The POC run identifier
+            rows: List of candle data dictionaries
+            threshold: Classification threshold (default 0.5)
+            
+        Returns:
+            List of prediction results
+        """
+        # Ensure model is loaded
+        if not self.poc_model_available(run_id):
+            raise ValueError(f"POC model not available: {run_id}")
+        
+        model = self._poc_models[run_id]
+        scaler = self._poc_scalers[run_id]
+        
+        # Build feature matrix (using basic 16-feature structure)
+        X_list: List[np.ndarray] = []
+        timestamps: List[str] = []
+        
+        for r in rows:
+            # Use the basic 16-feature builder (no MA5 features)
+            X_list.append(self._build_feature_vector(r, "1d"))
+            timestamps.append(str(r.get("timestamp")))
+        
+        X = np.vstack(X_list) if X_list else np.zeros((0, 16), dtype=float)
+        
+        # Scale
+        X_scaled = scaler.transform(X)
+        
+        # Predict
+        try:
+            proba = model.predict_proba(X_scaled)[:, 1].astype(float).tolist()
+        except Exception:
+            # Fallback for models without predict_proba
+            y_hat = model.predict(X_scaled)
+            proba = [0.9 if int(v) == 1 else 0.1 for v in y_hat]
+        
+        preds = [1 if p >= threshold else 0 for p in proba]
+        decision_margins = [float(abs(p - threshold)) for p in proba]
+        
+        results: List[PredictionResult] = []
+        for ts, y, p, dm in zip(timestamps, preds, proba, decision_margins):
+            results.append(PredictionResult(
+                timestamp=ts,
+                pred=int(y),
+                proba=float(p),
+                confidence=float(dm),
+                is_train=None  # POC models don't distinguish train/test
+            ))
+        
+        return results
 
     @staticmethod
     def _parse_vector(value: Any, expected_len: int) -> Optional[List[float]]:
