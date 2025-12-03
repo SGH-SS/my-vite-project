@@ -30,15 +30,56 @@ By integrating **Vector-Based Pattern Recognition**, **Large Language Models (LL
 *   **Cognitive Workflow:** Agents utilize Chain-of-Thought (CoT) reasoning to parse news sentiment, analyze market structure, and cross-validate signals before consensus is reached.
 *   **Transparency:** Full "Thought Logs" allow human operators to audit the AI's decision-making process in real-time.
 
-### 2. "Neural Atlas" Vector Search
+### 3. "Neural Atlas" Vector Search
 *   **Market Embedding Space:** Converts every candle sequence into a 384-dimensional vector, creating a searchable "map" of market history.
 *   **Semantic Price Action:** Allows queries like *"Show me 4H setups where consolidation broke downward with high volume after a CPI release"* by mapping natural language to vector space.
 *   **Anomaly Detection:** Uses Isolation Forests to flag "Black Swan" precursors—market structures that deviate statistically from the learned manifold of normal price action.
 
-### 3. "Chronos" Generative Backtesting
+### 4. "Chronos" Generative Backtesting
 *   **Beyond History:** Doesn't just replay past data. Uses **Generative Adversarial Networks (GANs)** to synthesize infinite "counterfactual" market scenarios (e.g., *"What if 2008 happened with today's volatility?"*).
 *   **Robustness Training:** Trains models on these synthetic futures to ensure strategies are anti-fragile and not just overfitted to historical noise.
-*   **Microstructure Simulation:** Models order book liquidity, slippage, and market impact for institutional-grade realism.
+
+---
+
+## 🏗️ The Platform: Monolithic Implementation
+
+While the Intelligence Engines provide the "Brain," the **Daygent Monolith** provides the "Body." The system is architected as a high-performance React 19 application backed by a unified FastAPI server, seamlessly integrating **six specialized dashboards** into a single event loop.
+
+### 🖥️ Integrated Dashboard Suite
+
+| Dashboard | Functionality & Business Value |
+| :--- | :--- |
+| **1. Data Dashboard** | **ETL & Analytics Center.** A massive data ingestion engine capable of filtering millions of rows. Features regex search, SQL-backed pagination, and export capabilities for 21+ trading tables. |
+| **2. Vector Dashboard** | **Pattern Recognition Core.** Visualizes the "Neural Atlas." Displays heatmaps of BERT/ISO vectors and computes real-time similarity matrices to find historical pattern matches. |
+| **3. Chart Dashboard** | **Professional Technical Analysis.** High-performance canvas charting (60fps) with multi-select, range-select, and "Game Mode" navigation. Synchronizes selection state globally across all dashboards. |
+| **4. Backtest Dashboard** | **Strategy Validation & Training.** The flagship environment. Replays history candle-by-candle ("Happened vs. Coming"), overlays live model predictions, and hosts the **Interactive Train Mode**. |
+| **5. Pipeline Dashboard** | **Orchestration.** Windows-native launcher for data pipelines. Spawns detached consoles for scrapers, feature engineering scripts, and vector generators. |
+| **6. LLM Dashboard** | **Agentic Interface.** The frontend for "AlphaSwarm." A chat-based interface where users can converse with the market data, view agent debates, and trigger autonomous analysis. |
+
+---
+
+## 💎 Key Features Deep Dive
+
+### 🧪 Interactive "Regime-Specific" Training (Train Mode)
+**The Industry's First "Click-to-Train" UX.**
+Don't rely on a single static model. Click any point on the chart to train a **LightGBM** instance specifically on the data leading up to that moment.
+*   **Instant Regime Adaptation:** Train a model *only* on low-volatility bull markets, or *only* on high-volatility crashes.
+*   **Hyperparameter Auto-Tuning:** Automated grid search optimizes leaves, depth, and learning rates in the background.
+*   **Live Inference Overlay:** The trained model immediately projects probability cones onto the live chart.
+
+### 📐 Advanced Vector System
+Daygent doesn't just look at price; it *embeds* it.
+*   **Dynamic Vector Types:** Automatically detects and computes 8 distinct vector types per candle:
+    *   `BERT_ohlc` (384D): Semantic embeddings of price action.
+    *   `iso_ohlc` (4D): Isolation Forest anomaly scores.
+    *   `norm_ohlc` / `raw_ohlc`: Statistical normalizations.
+*   **Shape Similarity Engine:** Mathematically compares the current market structure against 10+ years of history using Manhattan, Euclidean, and Cosine distance metrics to find statistically similar setups.
+
+### 📊 Quantitative Liquidity Engine
+*   **TJR Markers (Trend Jump Reversal):** Algorithmic detection of internal liquidity shifts.
+*   **Swing Highs/Lows:** Identification of external liquidity pools and stop-run targets.
+*   **Fair Value Gaps (FVG):** Automated mapping of market inefficiencies across all timeframes.
+*   **Binary Classification Labels:** Auto-generated `future_direction` labels (0/1) for supervised learning pipelines.
 
 ---
 
@@ -54,22 +95,6 @@ Built on a **high-frequency monolithic architecture** to minimize latency betwee
 | **Data Layer** | PostgreSQL + TimescaleDB | **Hyper-Scale.** Optimized for time-series data with automatic partitioning and compression. |
 | **Compute Engine** | CUDA + Torch + LightGBM | **On-Demand Training.** "Click-to-Train" interface spins up GPU kernels to retrain models on specific market regimes instantly. |
 | **Agent Runtime** | LangGraph + Custom Orchestrator | **Stateful Autonomy.** Manages agent memory, tool access (web search, python repl), and recursive planning loops. |
-
----
-
-## 💎 Key Features
-
-### 🧪 Interactive "Regime-Specific" Training
-**The Industry's First "Click-to-Train" UX.**
-Don't rely on a single static model. Click any point on the chart to train a **LightGBM** instance specifically on the data leading up to that moment.
-*   **Instant Regime Adaptation:** Train a model *only* on low-volatility bull markets, or *only* on high-volatility crashes.
-*   **Hyperparameter Auto-Tuning:** Automated grid search optimizes leaves, depth, and learning rates in the background.
-*   **Live Inference Overlay:** The trained model immediately projects probability cones onto the live chart.
-
-### 📊 Universal Liquidity & FVG Engine
-*   **Algorithmic Structuring:** Automatically maps **Fair Value Gaps (FVG)**, **Swing Highs/Lows**, and **TJR (Trend Jump Reversal)** liquidity pools across all timeframes (1m to 1M).
-*   **Multi-Timeframe Confluence:** Identifies "Golden Zones" where liquidity levels from daily, 4H, and 1H charts align.
-*   **Order Flow Imbalance:** Visualizes aggressive buying/selling pressure within the candle (Delta) to confirm liquidity sweeps.
 
 ---
 
