@@ -11,14 +11,23 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+
+
+for env_path in (
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[3] / ".env",
+):
+    load_dotenv(env_path, override=False)
 
 
 def _get_openai_api_key() -> str:

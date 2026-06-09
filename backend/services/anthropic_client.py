@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,13 @@ COUNT_TOKENS_URL = "https://api.anthropic.com/v1/messages/count_tokens"
 ANTHROPIC_VERSION = "2023-06-01"
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
+
+
+for env_path in (
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[3] / ".env",
+):
+    load_dotenv(env_path, override=False)
 
 
 def _get_anthropic_api_key() -> str:

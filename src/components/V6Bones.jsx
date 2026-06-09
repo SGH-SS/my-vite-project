@@ -738,7 +738,7 @@ Only 0.70 ATRs is genuine mispricing.`} />
           Daily Screening Decision
         </h4>
         <div className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-          <p><code className="font-mono">resid_signal = +0.70 > 0</code> → candidate SHORT direction</p>
+          <p><code className="font-mono">resid_signal = +0.70 {'>'} 0</code> → candidate SHORT direction</p>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className={`rounded-lg border p-3 ${isDarkMode ? 'bg-emerald-900/20 border-emerald-800' : 'bg-emerald-50 border-emerald-200'}`}>
               <div className={`text-xs font-bold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>V6 (No Gates)</div>
