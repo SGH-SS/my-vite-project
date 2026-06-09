@@ -11,6 +11,8 @@ import DataDashboard from './components/data-dashboard/DataDashboard';
 import VectorDashboard from './components/vector-dashboard/VectorDashboard';
 import PipelineDashboard from './components/PipelineDashboard';
 import ModelTraining from './components/model';
+import FeatureDashboard from './components/Feature';
+import IMCP4Dashboard from './components/IMCP4';
 
 // Original Monolithic Dashboard Component
 import OriginalTradingDashboard from './components/TradingDashboard';
@@ -129,6 +131,34 @@ function App() {
                     >
                       🧪 Model Training
                     </button>
+                    <button
+                      onClick={() => setDashboardMode(DASHBOARD_MODES.FEATURES)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                        dashboardMode === DASHBOARD_MODES.FEATURES
+                          ? isDarkMode
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white text-blue-600 shadow-sm'
+                          : isDarkMode
+                            ? 'text-gray-300 hover:text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      🔬 Features
+                    </button>
+                    <button
+                      onClick={() => setDashboardMode(DASHBOARD_MODES.IMCP4)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                        dashboardMode === DASHBOARD_MODES.IMCP4
+                          ? isDarkMode
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-white text-emerald-600 shadow-sm'
+                          : isDarkMode
+                            ? 'text-gray-300 hover:text-white'
+                            : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      🚀 IMC P4
+                    </button>
                   </div>
                 )}
                 
@@ -187,13 +217,17 @@ function App() {
             <OriginalTradingDashboard />
           ) : (
             /* Modular Dashboard */
-            dashboardMode === DASHBOARD_MODES.DATA
-              ? <DataDashboard isDarkMode={isDarkMode} />
-              : dashboardMode === DASHBOARD_MODES.VECTOR
-                ? <VectorDashboard isDarkMode={isDarkMode} />
-                : dashboardMode === DASHBOARD_MODES.PIPELINE
-                  ? <PipelineDashboard isDarkMode={isDarkMode} />
-                  : <ModelTraining isDarkMode={isDarkMode} />
+            dashboardMode === DASHBOARD_MODES.IMCP4
+              ? <IMCP4Dashboard isDarkMode={isDarkMode} />
+              : dashboardMode === DASHBOARD_MODES.DATA
+                ? <DataDashboard isDarkMode={isDarkMode} />
+                : dashboardMode === DASHBOARD_MODES.VECTOR
+                  ? <VectorDashboard isDarkMode={isDarkMode} />
+                  : dashboardMode === DASHBOARD_MODES.PIPELINE
+                    ? <PipelineDashboard isDarkMode={isDarkMode} />
+                    : dashboardMode === DASHBOARD_MODES.FEATURES
+                      ? <FeatureDashboard isDarkMode={isDarkMode} />
+                      : <ModelTraining isDarkMode={isDarkMode} />
           )}
         </main>
       </div>

@@ -1,8 +1,39 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 
 // API base for pipeline endpoints
 const API_BASE = 'http://localhost:8000/api/pipeline';
+
+// Hook to fetch freshness status
+function useFreshnessStatus() {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchStatus = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/freshness-status`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || 'Failed to fetch status');
+      setStatus(data);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchStatus, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  return { status, loading, error, refresh: fetchStatus };
+}
 
 function useScripts() {
   const [scripts, setScripts] = useState([]);
@@ -54,6 +85,8 @@ export default function PipelineDashboard({ isDarkMode = false }) {
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentError, setRecentError] = useState(null);
   const [recentSymbol, setRecentSymbol] = useState(null);
+  const [showRules, setShowRules] = useState(false);
+  const { status: freshnessStatus, loading: freshnessLoading, error: freshnessError, refresh: refreshFreshness } = useFreshnessStatus();
 
   const primary = useMemo(() => {
     const byKey = Object.fromEntries((scripts || []).map(s => [s.key, s]));
@@ -298,6 +331,302 @@ export default function PipelineDashboard({ isDarkMode = false }) {
           <p className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             These call <code>run_pipeline_script.bat</code> with the script name. Ensure the file exists in <code>data-pipeline</code>.
           </p>
+        </div>
+
+        {/* Data Freshness Status */}
+        <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl p-5 shadow-sm mt-6`}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">📊 Data Freshness Status</h3>
+              <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {freshnessStatus?.timestamp 
+                  ? `Last checked: ${new Date(freshnessStatus.timestamp).toLocaleString()}`
+                  : 'Loading...'}
+              </p>
+            </div>
+            <button
+              onClick={refreshFreshness}
+              disabled={freshnessLoading}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                isDarkMode 
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              } disabled:opacity-50`}
+            >
+              {freshnessLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+            </button>
+          </div>
+
+          {freshnessError && (
+            <div className={`text-sm mb-4 p-3 rounded-lg ${isDarkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-50 text-red-600'}`}>
+              Error: {freshnessError}
+            </div>
+          )}
+
+          {freshnessStatus && (
+            <div className="space-y-4">
+              {/* Market Status Banner */}
+              <div className={`flex gap-4 p-3 rounded-lg ${isDarkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                {Object.entries(freshnessStatus.market_status || {}).map(([asset, status]) => (
+                  <div key={asset} className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${status === 'Open' ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
+                    <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {asset.toUpperCase()}: {status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Asset Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {freshnessStatus.assets?.map(asset => (
+                  <div 
+                    key={asset.asset} 
+                    className={`rounded-lg border ${
+                      asset.overall_status === 'up_to_date' 
+                        ? isDarkMode ? 'border-emerald-700 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50'
+                        : asset.overall_status === 'stale'
+                        ? isDarkMode ? 'border-red-700 bg-red-900/20' : 'border-red-200 bg-red-50'
+                        : isDarkMode ? 'border-amber-700 bg-amber-900/20' : 'border-amber-200 bg-amber-50'
+                    } p-4`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-base">
+                        {asset.asset === 'spy' && '📊'}
+                        {asset.asset === 'es' && '📈'}
+                        {asset.asset === 'eurusd' && '💱'}
+                        {' '}{asset.asset.toUpperCase()}
+                      </h4>
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                        asset.overall_status === 'up_to_date'
+                          ? isDarkMode ? 'bg-emerald-800 text-emerald-200' : 'bg-emerald-100 text-emerald-700'
+                          : asset.overall_status === 'stale'
+                          ? isDarkMode ? 'bg-red-800 text-red-200' : 'bg-red-100 text-red-700'
+                          : isDarkMode ? 'bg-amber-800 text-amber-200' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {asset.overall_status === 'up_to_date' ? '✓ Up to Date' : 
+                         asset.overall_status === 'stale' ? '✗ Stale' : '⚠ Partial'}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      {asset.timeframes?.map(tf => (
+                        <div 
+                          key={tf.timeframe}
+                          className={`flex items-center justify-between text-sm py-1.5 px-2 rounded ${
+                            isDarkMode ? 'bg-gray-800/50' : 'bg-white/70'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              tf.is_up_to_date 
+                                ? 'bg-emerald-500' 
+                                : tf.staleness_periods > 5 
+                                ? 'bg-red-500' 
+                                : 'bg-amber-500'
+                            }`}></span>
+                            <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                              {tf.timeframe}
+                            </span>
+                          </div>
+                          <span className={`text-xs ${
+                            tf.is_up_to_date 
+                              ? isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                              : tf.staleness_periods > 5
+                              ? isDarkMode ? 'text-red-400' : 'text-red-600'
+                              : isDarkMode ? 'text-amber-400' : 'text-amber-600'
+                          }`}>
+                            {tf.is_up_to_date ? '✓' : tf.staleness_message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Last Update Info */}
+                    <div className={`mt-3 pt-2 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        Latest 1m: {asset.timeframes?.find(t => t.timeframe === '1m')?.last_timestamp 
+                          ? new Date(asset.timeframes.find(t => t.timeframe === '1m').last_timestamp).toLocaleString()
+                          : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {freshnessLoading && !freshnessStatus && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className={`ml-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading freshness data...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Freshness Rules Explanation */}
+        <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl p-5 shadow-sm mt-6`}>
+          <div 
+            className="flex items-center justify-between cursor-pointer"
+            onClick={() => setShowRules(!showRules)}
+          >
+            <h3 className="text-lg font-semibold">📋 Data Freshness Rules</h3>
+            <button className={`p-1 rounded ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}>
+              {showRules ? '▲' : '▼'}
+            </button>
+          </div>
+
+          {showRules && (
+            <div className="mt-4 space-y-6">
+              {/* General Rules */}
+              <div>
+                <h4 className={`font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  📌 General Rules
+                </h4>
+                <ul className={`list-disc list-inside text-sm space-y-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <li>Data is considered <span className="text-emerald-500 font-medium">Up to Date</span> if within 1 candle period of expected</li>
+                  <li>A candle is complete when its close time has passed</li>
+                  <li>All times are calculated in <span className="font-medium">Eastern Time (ET)</span></li>
+                  <li>Weekends and market closures are accounted for</li>
+                </ul>
+              </div>
+
+              {/* Market Hours Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                      <th className="text-left py-2 px-3 rounded-tl-lg">Asset</th>
+                      <th className="text-left py-2 px-3">Market Type</th>
+                      <th className="text-left py-2 px-3">Trading Hours (ET)</th>
+                      <th className="text-left py-2 px-3 rounded-tr-lg">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <td className="py-2 px-3 font-medium">📊 SPY</td>
+                      <td className="py-2 px-3">US Equity ETF</td>
+                      <td className="py-2 px-3">Mon-Fri: 9:30 AM – 4:00 PM</td>
+                      <td className="py-2 px-3 text-xs">Regular trading hours only. Closed weekends & holidays.</td>
+                    </tr>
+                    <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <td className="py-2 px-3 font-medium">📈 ES</td>
+                      <td className="py-2 px-3">E-mini Futures</td>
+                      <td className="py-2 px-3">Sun 6:00 PM – Fri 5:00 PM</td>
+                      <td className="py-2 px-3 text-xs">Nearly 24/5. Daily break 5-6 PM ET. Closed Sat & Sun pre-6PM.</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 font-medium">💱 EURUSD</td>
+                      <td className="py-2 px-3">Forex</td>
+                      <td className="py-2 px-3">Sun 5:00 PM – Fri 5:00 PM</td>
+                      <td className="py-2 px-3 text-xs">24/5 trading. Closed Saturday & Sunday pre-5PM.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Timeframe Expectations */}
+              <div>
+                <h4 className={`font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  ⏱️ Timeframe Update Expectations
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                        <th className="text-left py-2 px-3 rounded-tl-lg">Timeframe</th>
+                        <th className="text-left py-2 px-3">Candle Duration</th>
+                        <th className="text-left py-2 px-3">Expected Updates</th>
+                        <th className="text-left py-2 px-3 rounded-tr-lg">Tolerance</th>
+                      </tr>
+                    </thead>
+                    <tbody className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">1d</td>
+                        <td className="py-2 px-3">1 Day</td>
+                        <td className="py-2 px-3">Once per trading day (at market close)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 day behind</td>
+                      </tr>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">4h</td>
+                        <td className="py-2 px-3">4 Hours</td>
+                        <td className="py-2 px-3">~6 candles per trading day</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (4h) behind</td>
+                      </tr>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">1h</td>
+                        <td className="py-2 px-3">1 Hour</td>
+                        <td className="py-2 px-3">~6.5 candles per trading day (SPY)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (1h) behind</td>
+                      </tr>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">30m</td>
+                        <td className="py-2 px-3">30 Minutes</td>
+                        <td className="py-2 px-3">~13 candles per trading day (SPY)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (30m) behind</td>
+                      </tr>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">15m</td>
+                        <td className="py-2 px-3">15 Minutes</td>
+                        <td className="py-2 px-3">~26 candles per trading day (SPY)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (15m) behind</td>
+                      </tr>
+                      <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <td className="py-2 px-3 font-medium">5m</td>
+                        <td className="py-2 px-3">5 Minutes</td>
+                        <td className="py-2 px-3">~78 candles per trading day (SPY)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (5m) behind</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-3 font-medium">1m</td>
+                        <td className="py-2 px-3">1 Minute</td>
+                        <td className="py-2 px-3">~390 candles per trading day (SPY)</td>
+                        <td className="py-2 px-3 text-emerald-500">≤1 candle (1m) behind</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Status Legend */}
+              <div>
+                <h4 className={`font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  🚦 Status Legend
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className={`flex items-center gap-2 p-3 rounded-lg ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-50'}`}>
+                    <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+                    <div>
+                      <p className={`font-medium text-sm ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>Up to Date</p>
+                      <p className={`text-xs ${isDarkMode ? 'text-emerald-400/70' : 'text-emerald-600/70'}`}>Within 1 candle of expected</p>
+                    </div>
+                  </div>
+                  <div className={`flex items-center gap-2 p-3 rounded-lg ${isDarkMode ? 'bg-amber-900/30' : 'bg-amber-50'}`}>
+                    <span className="w-3 h-3 rounded-full bg-amber-500"></span>
+                    <div>
+                      <p className={`font-medium text-sm ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>Slightly Stale</p>
+                      <p className={`text-xs ${isDarkMode ? 'text-amber-400/70' : 'text-amber-600/70'}`}>2-5 candles behind</p>
+                    </div>
+                  </div>
+                  <div className={`flex items-center gap-2 p-3 rounded-lg ${isDarkMode ? 'bg-red-900/30' : 'bg-red-50'}`}>
+                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                    <div>
+                      <p className={`font-medium text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Stale</p>
+                      <p className={`text-xs ${isDarkMode ? 'text-red-400/70' : 'text-red-600/70'}`}>More than 5 candles behind</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* DST Note */}
+              <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
+                <p className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                  <span className="font-medium">💡 Daylight Saving Time:</span> All calculations use pytz for proper timezone handling. 
+                  The system automatically adjusts for DST transitions (EST ↔ EDT).
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Recent Data Modal */}

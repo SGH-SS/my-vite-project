@@ -4,6 +4,15 @@ import BacktestDashboard from './backtest.jsx';
 import TradingLLMDashboard from './LLMDashboard.jsx';
 import PipelineDashboard from './PipelineDashboard.jsx';
 import ModelTraining from './model.jsx';
+import DBentoDashboard from './DBento.jsx';
+import FeatureDashboard from './Feature.jsx';
+import V6Bones from './V6Bones.jsx';
+import IMCP4Dashboard from './IMCP4.jsx';
+import DeltaResearch from './DeltaResearch.jsx';
+import SolDashboard from './Sol.jsx';
+import PerpDashboard from './PerpDashboard.jsx';
+import StratHub from './StratHub.jsx';
+import BucketDashboard from './bucket.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
@@ -2947,7 +2956,7 @@ const TradingDashboard = () => {
   }, [selectedSymbol, selectedTimeframe, rowLimit, sortOrder, currentPage]);
 
   // Dashboard mode is local to each tab (not shared)
-  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', 'backtest', 'llm', 'pipeline', 'model'
+  const [dashboardMode, setDashboardMode] = useState('data'); // 'data', 'vector', 'chart', 'backtest', 'llm', 'pipeline', 'model', 'features'
 
   // Local state that doesn't need to be shared across tabs
   const [stats, setStats] = useState(null);
@@ -3685,12 +3694,43 @@ const TradingDashboard = () => {
                     (isDarkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700') :
                   dashboardMode === 'backtest' ? 
                     (isDarkMode ? 'bg-indigo-900/30 text-indigo-300' : 'bg-indigo-100 text-indigo-700') :
+                  dashboardMode === 'databento' ?
+                    (isDarkMode ? 'bg-amber-900/30 text-amber-300' : 'bg-amber-100 text-amber-700') :
+                  dashboardMode === 'features' ?
+                    (isDarkMode ? 'bg-pink-900/30 text-pink-300' : 'bg-pink-100 text-pink-700') :
+                  dashboardMode === 'v6bones' ?
+                    (isDarkMode ? 'bg-rose-900/30 text-rose-300' : 'bg-rose-100 text-rose-700') :
+                  dashboardMode === 'imcp4' ?
+                    (isDarkMode ? 'bg-emerald-900/30 text-emerald-300' : 'bg-emerald-100 text-emerald-700') :
+                  dashboardMode === 'sol' ?
+                    (isDarkMode ? 'bg-violet-900/30 text-violet-300' : 'bg-violet-100 text-violet-700') :
+                  dashboardMode === 'btc' ?
+                    (isDarkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700') :
+                  dashboardMode === 'eth' ?
+                    (isDarkMode ? 'bg-indigo-900/30 text-indigo-300' : 'bg-indigo-100 text-indigo-700') :
+                  dashboardMode === 'spx' ?
+                    (isDarkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-700') :
+                  dashboardMode === 'strathub' ?
+                    (isDarkMode ? 'bg-fuchsia-900/30 text-fuchsia-300' : 'bg-fuchsia-100 text-fuchsia-700') :
+                  dashboardMode === 'bxt' ?
+                    (isDarkMode ? 'bg-fuchsia-900/30 text-fuchsia-300' : 'bg-fuchsia-100 text-fuchsia-700') :
                     (isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700')
                 }`}>
                   {dashboardMode === 'data' ? 'Data Analytics' : 
                    dashboardMode === 'vector' ? 'Vector Intelligence' : 
                    dashboardMode === 'chart' ? 'Chart Analysis' :
                    dashboardMode === 'backtest' ? 'Backtest Analysis' :
+                   dashboardMode === 'databento' ? 'DataBento' :
+                   dashboardMode === 'features' ? 'Feature Catalog' :
+                   dashboardMode === 'v6bones' ? 'V6 Bones' :
+                   dashboardMode === 'imcp4' ? 'IMC P4' :
+                   dashboardMode === 'deltaresearch' ? 'Delta Research' :
+                   dashboardMode === 'sol' ? 'SOL-PERP' :
+                   dashboardMode === 'btc' ? 'BTC-PERP' :
+                   dashboardMode === 'eth' ? 'ETH-PERP' :
+                   dashboardMode === 'spx' ? 'SPX-PERP' :
+                   dashboardMode === 'strathub' ? 'Strat Hub' :
+                   dashboardMode === 'bxt' ? 'Deriv BXT' :
                    'AI Assistant'}
                 </div>
               </div>
@@ -3705,6 +3745,28 @@ const TradingDashboard = () => {
                     ? 'Interactive charting & technical analysis • Professional trading tools'
                     : dashboardMode === 'backtest'
                     ? 'Historical replay & strategy evaluation • Candle-by-candle simulation'
+                    : dashboardMode === 'databento'
+                    ? 'ES Futures & Calendar Spreads • Daily Liquidity Analysis'
+                    : dashboardMode === 'features'
+                    ? 'ML Feature Catalog • Regime & Entry Feature Explorer'
+                    : dashboardMode === 'v6bones'
+                    ? 'V6 Strategy Architecture • Residual-Based Calendar Spread Pipeline'
+                    : dashboardMode === 'imcp4'
+                    ? 'Tutorial Round Analysis • Target: #1 Global'
+                    : dashboardMode === 'deltaresearch'
+                    ? 'ES Futures Cumulative Delta Signal • MBO Microstructure Filters'
+                    : dashboardMode === 'sol'
+                    ? 'Hyperliquid SOL Perpetual Futures • Live L2 + Trade Feed'
+                    : dashboardMode === 'btc'
+                    ? 'Hyperliquid BTC Perpetual Futures • Live L2 + Trade Feed'
+                    : dashboardMode === 'eth'
+                    ? 'Hyperliquid ETH Perpetual Futures • Live L2 + Trade Feed'
+                    : dashboardMode === 'spx'
+                    ? 'Hyperliquid SPX Perpetual Futures (HIP-3) • Live L2 + Trade Feed'
+                    : dashboardMode === 'strathub'
+                    ? 'Multi-coin component composer • LLM-driven structural analysis'
+                    : dashboardMode === 'bxt'
+                    ? '5s DERIV signal buckets • Vectors · derivatives · stacking · strategy'
                     : 'Intelligent trading assistant • Natural language market analysis'}
                 </p>
             </div>
@@ -3725,114 +3787,51 @@ const TradingDashboard = () => {
               </button>
               
               {/* Dashboard Mode Toggle */}
-              <div className={`flex rounded-lg p-1 transition-colors duration-200 ${
+              <div className={`flex items-center rounded-lg p-1 gap-0.5 transition-colors duration-200 ${
                 isDarkMode ? 'bg-gray-800' : 'bg-gray-100'
               }`}>
-                <button
-                  onClick={() => setDashboardMode('data')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'data'
-                      ? isDarkMode 
-                        ? 'bg-gray-700 text-blue-400 shadow-sm ring-1 ring-blue-500/50'
-                        : 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>📊</span>
-                  <span>Data Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('vector')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'vector'
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-purple-400 shadow-sm ring-1 ring-purple-500/50'
-                        : 'bg-white text-purple-600 shadow-sm ring-1 ring-purple-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>🧠</span>
-                  <span>Vector Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('chart')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'chart'
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-green-400 shadow-sm ring-1 ring-green-500/50'
-                        : 'bg-white text-green-600 shadow-sm ring-1 ring-green-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>📈</span>
-                  <span>Chart Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('backtest')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'backtest'
-                      ? (isDarkMode
-                        ? 'bg-gray-700 text-indigo-400 shadow-sm ring-1 ring-indigo-500/50'
-                        : 'bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-200')
-                      : (isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50')
-                  }`}
-                >
-                  <span>🧪</span>
-                  <span>Backtest Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('llm')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'llm'
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-orange-400 shadow-sm ring-1 ring-orange-500/50'
-                        : 'bg-white text-orange-600 shadow-sm ring-1 ring-orange-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>🤖</span>
-                  <span>LLM Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('pipeline')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'pipeline'
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-blue-400 shadow-sm ring-1 ring-blue-500/50'
-                        : 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>⚙️</span>
-                  <span>Pipeline Dashboard</span>
-                </button>
-                <button
-                  onClick={() => setDashboardMode('model')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                    dashboardMode === 'model'
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-blue-400 shadow-sm ring-1 ring-blue-500/50'
-                        : 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-200'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:text-white hover:bg-gray-700'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>🧪</span>
-                  <span>Model Training</span>
-                </button>
+                {[
+                  { mode: 'data',      icon: '📊', label: 'Data',      activeClass: isDarkMode ? 'text-blue-400 ring-blue-500/50'       : 'text-blue-600 ring-blue-200' },
+                  { mode: 'vector',    icon: '🧠', label: 'Vector',    activeClass: isDarkMode ? 'text-purple-400 ring-purple-500/50'   : 'text-purple-600 ring-purple-200' },
+                  { mode: 'chart',     icon: '📈', label: 'Chart',     activeClass: isDarkMode ? 'text-green-400 ring-green-500/50'     : 'text-green-600 ring-green-200' },
+                  { mode: 'backtest',  icon: '🧪', label: 'Backtest',  activeClass: isDarkMode ? 'text-indigo-400 ring-indigo-500/50'   : 'text-indigo-600 ring-indigo-200' },
+                  { mode: 'llm',       icon: '🤖', label: 'LLM',       activeClass: isDarkMode ? 'text-orange-400 ring-orange-500/50'   : 'text-orange-600 ring-orange-200' },
+                  { mode: 'pipeline',  icon: '⚙️',  label: 'Pipeline',  activeClass: isDarkMode ? 'text-sky-400 ring-sky-500/50'         : 'text-sky-600 ring-sky-200' },
+                  { mode: 'model',     icon: '🎯', label: 'Model',     activeClass: isDarkMode ? 'text-blue-400 ring-blue-500/50'       : 'text-blue-600 ring-blue-200' },
+                  { mode: 'databento', icon: '📡', label: 'DataBento', activeClass: isDarkMode ? 'text-amber-400 ring-amber-500/50'     : 'text-amber-600 ring-amber-200' },
+                  { mode: 'features',  icon: '🔬', label: 'Features',  activeClass: isDarkMode ? 'text-pink-400 ring-pink-500/50'       : 'text-pink-600 ring-pink-200' },
+                  { mode: 'v6bones',   icon: '🧬', label: 'V6',        activeClass: isDarkMode ? 'text-rose-400 ring-rose-500/50'       : 'text-rose-600 ring-rose-200' },
+                  { mode: 'imcp4',     icon: '🚀', label: 'IMC P4',    activeClass: isDarkMode ? 'text-emerald-400 ring-emerald-500/50' : 'text-emerald-600 ring-emerald-200' },
+                  { mode: 'deltaresearch', icon: '∆',  label: 'Delta',     activeClass: isDarkMode ? 'text-teal-400 ring-teal-500/50'     : 'text-teal-600 ring-teal-200' },
+                  { mode: 'sol',           icon: '◎',  label: 'SOL',       activeClass: isDarkMode ? 'text-violet-400 ring-violet-500/50' : 'text-violet-600 ring-violet-200' },
+                  { mode: 'btc',           icon: '₿',  label: 'BTC',       activeClass: isDarkMode ? 'text-yellow-400 ring-yellow-500/50' : 'text-yellow-600 ring-yellow-200' },
+                  { mode: 'eth',           icon: 'Ξ',  label: 'ETH',       activeClass: isDarkMode ? 'text-indigo-400 ring-indigo-500/50' : 'text-indigo-600 ring-indigo-200' },
+                  { mode: 'spx',           icon: '§',  label: 'SPX',       activeClass: isDarkMode ? 'text-red-400 ring-red-500/50'       : 'text-red-600 ring-red-200' },
+                  { mode: 'strathub',      icon: '◈',  label: 'Strat Hub', activeClass: isDarkMode ? 'text-fuchsia-400 ring-fuchsia-500/50' : 'text-fuchsia-600 ring-fuchsia-200' },
+                  { mode: 'bxt',           icon: '◧',  label: 'Deriv BXT', activeClass: isDarkMode ? 'text-fuchsia-400 ring-fuchsia-500/50' : 'text-fuchsia-600 ring-fuchsia-200' },
+                ].map(({ mode, icon, label, activeClass }) => {
+                  const isActive = dashboardMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setDashboardMode(mode)}
+                      className={`group relative rounded-md font-medium transition-all duration-150 flex items-center ${
+                        isActive
+                          ? `px-3 py-1.5 ${isDarkMode ? 'bg-gray-700' : 'bg-white'} shadow-sm ring-1 ${activeClass}`
+                          : `px-2.5 py-1.5 ${isDarkMode ? 'text-gray-500 hover:text-gray-100 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-800 hover:bg-gray-50'}`
+                      }`}
+                    >
+                      <span className="text-base leading-none">{icon}</span>
+                      <span className={`overflow-hidden whitespace-nowrap text-xs transition-all duration-150 ease-out ${
+                        isActive
+                          ? 'max-w-[72px] opacity-100 ml-1.5'
+                          : 'max-w-0 opacity-0 group-hover:max-w-[72px] group-hover:opacity-100 group-hover:ml-1.5'
+                      }`}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -3876,6 +3875,49 @@ const TradingDashboard = () => {
           <PipelineDashboard isDarkMode={isDarkMode} />
         ) : dashboardMode === 'model' ? (
           <ModelTraining isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'databento' ? (
+          <DBentoDashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'features' ? (
+          <FeatureDashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'v6bones' ? (
+          <V6Bones isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'imcp4' ? (
+          <IMCP4Dashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'deltaresearch' ? (
+          <DeltaResearch isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'sol' ? (
+          <SolDashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'btc' ? (
+          <PerpDashboard
+            asset="btc"
+            displayName="BTC-PERP"
+            subtitle="Hyperliquid Bitcoin Perpetual · L2 + Trades"
+            gradient={['#f7b50f', '#fbbf24']}
+            priceDecimals={1}
+            spreadDecimals={2}
+          />
+        ) : dashboardMode === 'eth' ? (
+          <PerpDashboard
+            asset="eth"
+            displayName="ETH-PERP"
+            subtitle="Hyperliquid Ethereum Perpetual · L2 + Trades"
+            gradient={['#8b5cf6', '#60a5fa']}
+            priceDecimals={2}
+            spreadDecimals={3}
+          />
+        ) : dashboardMode === 'spx' ? (
+          <PerpDashboard
+            asset="spx"
+            displayName="SPX-PERP"
+            subtitle="Hyperliquid S&P 500 Perpetual (HIP-3 builder market) · L2 + Trades"
+            gradient={['#f43f5e', '#fb923c']}
+            priceDecimals={2}
+            spreadDecimals={3}
+          />
+        ) : dashboardMode === 'strathub' ? (
+          <StratHub isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'bxt' ? (
+          <BucketDashboard isDarkMode={isDarkMode} />
         ) : (
           <>
             {/* Original Data Dashboard Content */}

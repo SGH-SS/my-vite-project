@@ -90,7 +90,9 @@ export const DASHBOARD_MODES = {
   DATA: 'data',
   VECTOR: 'vector',
   PIPELINE: 'pipeline',
-  MODEL: 'model'
+  MODEL: 'model',
+  FEATURES: 'features',
+  IMCP4: 'imcp4'
 };
 
 // View Modes for Vector Dashboard

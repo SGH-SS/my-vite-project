@@ -14,6 +14,13 @@ from routers import trading
 from routers import pipeline
 from routers import training
 from routers import nodes as nodes_router
+from routers import databento
+from routers import imcp4
+from routers import sol
+from routers import perps
+from routers import strathub
+from services.sol_broadcaster import broadcaster
+from services.perps_broadcaster import perps_broadcaster
 
 # Set up logging
 logging.basicConfig(
@@ -56,6 +63,11 @@ app.include_router(trading.router)
 app.include_router(pipeline.router)
 app.include_router(training.router)
 app.include_router(nodes_router.router)
+app.include_router(databento.router)
+app.include_router(imcp4.router)
+app.include_router(sol.router)
+app.include_router(perps.router)
+app.include_router(strathub.router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -69,10 +81,15 @@ async def startup_event():
     else:
         logger.error("❌ Database connection failed!")
 
+    await broadcaster.start()
+    await perps_broadcaster.start()
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up on shutdown"""
     logger.info("Shutting down Trading Data API...")
+    await broadcaster.stop()
+    await perps_broadcaster.stop()
     engine.dispose()
 
 @app.get("/", summary="Root endpoint")
