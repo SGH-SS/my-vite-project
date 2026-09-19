@@ -92,8 +92,8 @@ function extractChartSeries(payload) {
     'rv_window_bps', 'spread_bps', 'funding', 'open_interest',
     'premium_bps', 'drift_bps', 'expansion_ratio', 'trades_per_s',
     'snaps_per_s', 'total_depth_usd', 'doi_per_s', 'v_total',
-    'ask_replenish', 'bid_replenish', 'ask_size', 'bid_size',
-    'buy_volume', 'sell_volume',
+    'ask_replenish_c', 'bid_replenish_c', 'ask_replenish', 'bid_replenish',
+    'ask_size', 'bid_size', 'buy_volume', 'sell_volume',
   ];
 
   let chosen = null;
@@ -124,9 +124,12 @@ function extractSignalBucketChannels(payload) {
     { key: 'bid_size', label: 'Bid Size', color: C.green },
     { key: 'buy_volume', label: 'Buy Vol', color: C.emerald },
     { key: 'sell_volume', label: 'Sell Vol', color: C.pink },
-    { key: 'ask_replenish', label: 'Ask Replenish', color: C.orange },
-    { key: 'bid_replenish', label: 'Bid Replenish', color: C.blue },
-    { key: 'spread_mean_bps', label: 'Spread (bps)', color: C.amber },
+    { key: 'ask_replenish_c', label: 'Ask Replenish (close)', color: C.orange },
+    { key: 'bid_replenish_c', label: 'Bid Replenish (close)', color: C.blue },
+    { key: 'spread_mean_ticks', label: 'Spread (ticks)', color: C.amber },
+    { key: 'ask_impact_bps', label: 'Ask Impact (bps)', color: C.red },
+    { key: 'sweep_count_buy', label: 'Buy Sweeps', color: C.emerald },
+    { key: 'sweep_count_sell', label: 'Sell Sweeps', color: C.pink },
   ];
 
   const result = [];
@@ -1969,8 +1972,9 @@ function ComputeModal({ selected, windowSec, bucketSize, customStart, customEnd,
                 borderRadius: 8, padding: '8px 12px', marginBottom: 12,
                 fontSize: 11, color: C.amber,
               }}>
-                Signal Buckets with large windows can take 30-120s to materialize.
-                The server is processing millions of L2 rows.
+                Signal Buckets are read pre-computed from the stored 5s_bxt table.
+                Coarser bucket sizes stack 5s buckets on the fly; wide windows still
+                return a lot of rows.
               </div>
             )}
 

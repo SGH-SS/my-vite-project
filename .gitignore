@@ -1,23 +1,34 @@
-# Dependency directories
+# Dependency directories (~100MB+)
 node_modules/
 
 # Build output
 dist/
 build/
 
-# Environment files
+# Environment files / secrets
 .env
+.env.*
+!.env.example
 
 # Logs
 *.log
 
-# .venv
+# Local Python env (numpy/scipy wheels are tens of MB each)
 .venv/
+venv/
 
 # Python cache files
 __pycache__/
 *.py[cod]
 *.pyo
 
-# Ignore any "runs" directories anywhere
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local data dumps (pkls can be tens of MB)
+*.pkl
+*.pickle
+
+# Training run artifacts (joblibs here are 5–12MB each, hundreds of MB total)
 **/runs/

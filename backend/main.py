@@ -19,6 +19,7 @@ from routers import imcp4
 from routers import sol
 from routers import perps
 from routers import strathub
+from routers import bxtviz
 from services.sol_broadcaster import broadcaster
 from services.perps_broadcaster import perps_broadcaster
 
@@ -68,6 +69,7 @@ app.include_router(imcp4.router)
 app.include_router(sol.router)
 app.include_router(perps.router)
 app.include_router(strathub.router)
+app.include_router(bxtviz.router)
 
 @app.on_event("startup")
 async def startup_event():

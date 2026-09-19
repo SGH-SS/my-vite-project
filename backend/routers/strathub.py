@@ -58,24 +58,27 @@ GROUPS: list[dict[str, Any]] = [
     {
         "key": "raw", "label": "Raw Data",
         "items": [
-            {"key": "raw_l2",     "label": "L2 snapshot window",        "stored": True},
-            {"key": "raw_marks",  "label": "Mark / oracle / funding",   "stored": True},
-            {"key": "raw_trades", "label": "Trade prints window",       "stored": True},
+            {"key": "raw_l2",      "label": "L2 snapshot window (5-level fast, per-level sizes)", "stored": True},
+            {"key": "raw_l2_deep", "label": "L2 deep window (20-level REST, depth bands)",       "stored": True},
+            {"key": "raw_marks",   "label": "Mark / oracle / funding",          "stored": True},
+            {"key": "raw_trades",  "label": "Trade prints window",              "stored": True},
         ],
     },
     {
         "key": "signal_buckets", "label": "Signal Buckets",
         "items": [
-            {"key": "signal_buckets", "label": "DERIV 22-vector framework (102 components)", "stored": False},
+            {"key": "signal_buckets",
+             "label": "DERIV 22-vector framework (150 components + quality flags, stored 5s)",
+             "stored": True},
         ],
     },
     {
         "key": "bars", "label": "Aggregated Bars",
         "items": [
-            {"key": "ohlcv_1s", "label": "OHLCV 1s",  "stored": False},
-            {"key": "ohlcv_5s", "label": "OHLCV 5s",  "stored": False},
-            {"key": "ohlcv_1m", "label": "OHLCV 1m",  "stored": False},
-            {"key": "ohlcv_5m", "label": "OHLCV 5m",  "stored": False},
+            {"key": "ohlcv_1s", "label": "OHLC 1s (mark)",  "stored": False},
+            {"key": "ohlcv_5s", "label": "OHLC 5s (mark)",  "stored": False},
+            {"key": "ohlcv_1m", "label": "OHLC 1m (mark)",  "stored": False},
+            {"key": "ohlcv_5m", "label": "OHLC 5m (mark)",  "stored": False},
         ],
     },
     {
@@ -170,9 +173,11 @@ _VALID_ASSETS = {a["key"] for a in ASSETS}
 
 # Map catalog item keys → their underlying DB table (for data-range queries).
 _ITEM_TABLE: dict[str, str] = {
-    "raw_l2": "l2_snapshots", "raw_marks": "mark_price", "raw_trades": "trades",
-    "signal_buckets": "l2_snapshots",
-    "ohlcv_1s": "trades", "ohlcv_5s": "trades", "ohlcv_1m": "trades", "ohlcv_5m": "trades",
+    "raw_l2": "l2_snapshots", "raw_l2_deep": "l2_deep",
+    "raw_marks": "mark_price", "raw_trades": "trades",
+    "signal_buckets": '"5s_bxt"',
+    "ohlcv_1s": "mark_price", "ohlcv_5s": "mark_price",
+    "ohlcv_1m": "mark_price", "ohlcv_5m": "mark_price",
     "l2_imbalance": "l2_snapshots", "microprice": "l2_snapshots",
     "top_of_book_depth": "l2_snapshots", "effective_spread": "l2_snapshots",
     "quote_churn_rate": "l2_snapshots",

@@ -13,6 +13,8 @@ import SolDashboard from './Sol.jsx';
 import PerpDashboard from './PerpDashboard.jsx';
 import StratHub from './StratHub.jsx';
 import BucketDashboard from './bucket.jsx';
+import L2DeepDashboard from './L2deep.jsx';
+import BxtVisualizer from './BxtVisualizer.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
@@ -3714,6 +3716,10 @@ const TradingDashboard = () => {
                     (isDarkMode ? 'bg-fuchsia-900/30 text-fuchsia-300' : 'bg-fuchsia-100 text-fuchsia-700') :
                   dashboardMode === 'bxt' ?
                     (isDarkMode ? 'bg-fuchsia-900/30 text-fuchsia-300' : 'bg-fuchsia-100 text-fuchsia-700') :
+                  dashboardMode === 'l2deep' ?
+                    (isDarkMode ? 'bg-cyan-900/30 text-cyan-300' : 'bg-cyan-100 text-cyan-700') :
+                  dashboardMode === 'bxtviz' ?
+                    (isDarkMode ? 'bg-teal-900/30 text-teal-300' : 'bg-teal-100 text-teal-700') :
                     (isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700')
                 }`}>
                   {dashboardMode === 'data' ? 'Data Analytics' : 
@@ -3731,6 +3737,8 @@ const TradingDashboard = () => {
                    dashboardMode === 'spx' ? 'SPX-PERP' :
                    dashboardMode === 'strathub' ? 'Strat Hub' :
                    dashboardMode === 'bxt' ? 'Deriv BXT' :
+                   dashboardMode === 'l2deep' ? 'L2 Deep' :
+                   dashboardMode === 'bxtviz' ? 'BXT Visualizer' :
                    'AI Assistant'}
                 </div>
               </div>
@@ -3767,6 +3775,10 @@ const TradingDashboard = () => {
                     ? 'Multi-coin component composer • LLM-driven structural analysis'
                     : dashboardMode === 'bxt'
                     ? '5s DERIV signal buckets • Vectors · derivatives · stacking · strategy'
+                    : dashboardMode === 'l2deep'
+                    ? 'REST-polled 20-level order book coverage • Per-coin calendar + hourly'
+                    : dashboardMode === 'bxtviz'
+                    ? 'BXT mid-price OHLC candles • Stacked 5s buckets · quality-honest rendering'
                     : 'Intelligent trading assistant • Natural language market analysis'}
                 </p>
             </div>
@@ -3809,6 +3821,8 @@ const TradingDashboard = () => {
                   { mode: 'spx',           icon: '§',  label: 'SPX',       activeClass: isDarkMode ? 'text-red-400 ring-red-500/50'       : 'text-red-600 ring-red-200' },
                   { mode: 'strathub',      icon: '◈',  label: 'Strat Hub', activeClass: isDarkMode ? 'text-fuchsia-400 ring-fuchsia-500/50' : 'text-fuchsia-600 ring-fuchsia-200' },
                   { mode: 'bxt',           icon: '◧',  label: 'Deriv BXT', activeClass: isDarkMode ? 'text-fuchsia-400 ring-fuchsia-500/50' : 'text-fuchsia-600 ring-fuchsia-200' },
+                  { mode: 'l2deep',        icon: '▦',  label: 'L2 Deep',   activeClass: isDarkMode ? 'text-cyan-400 ring-cyan-500/50' : 'text-cyan-600 ring-cyan-200' },
+                  { mode: 'bxtviz',        icon: '🕯️', label: 'BXT Viz',   activeClass: isDarkMode ? 'text-teal-400 ring-teal-500/50' : 'text-teal-600 ring-teal-200' },
                 ].map(({ mode, icon, label, activeClass }) => {
                   const isActive = dashboardMode === mode;
                   return (
@@ -3918,6 +3932,10 @@ const TradingDashboard = () => {
           <StratHub isDarkMode={isDarkMode} />
         ) : dashboardMode === 'bxt' ? (
           <BucketDashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'l2deep' ? (
+          <L2DeepDashboard isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'bxtviz' ? (
+          <BxtVisualizer isDarkMode={isDarkMode} />
         ) : (
           <>
             {/* Original Data Dashboard Content */}

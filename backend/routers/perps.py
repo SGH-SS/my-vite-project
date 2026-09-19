@@ -31,6 +31,10 @@ router = APIRouter(prefix="/api/perp", tags=["perps"])
 # ── Per-asset calendar cache (mirrors the one in sol.py) ──────────────────
 _cal_month_cache: dict[str, dict] = {}   # key "{asset}:YYYY-MM"
 _CAL_CURRENT_TTL = 60                    # seconds
+# Past months were previously cached forever ("immutable"), but a history
+# backfill (e.g. reconcile_btc_5sbxt --full-from-raw) mutates old months. Use a
+# finite TTL so backfilled/edited history surfaces without a backend restart.
+_CAL_PAST_TTL = 600                      # seconds
 
 _VALID_ASSETS = set(ASSETS)
 
@@ -42,6 +46,25 @@ def _check_asset(asset: str) -> str:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown asset '{asset}'. Valid: {sorted(_VALID_ASSETS)}",
+        )
+    return a
+
+
+# The 5s_bxt coverage endpoints serve any perp schema that has a "5s_bxt" table,
+# including SOL — whose live data otherwise lives on the dedicated sol.py router
+# (it is not in the perps broadcaster ASSETS). Keep this separate from
+# ``_VALID_ASSETS`` so the websocket/broadcaster don't start LISTENing on SOL
+# channels they don't own; the bxt endpoints are table-presence-gated anyway.
+_BXT_VALID_ASSETS = _VALID_ASSETS | {"sol"}
+
+
+def _check_bxt_asset(asset: str) -> str:
+    """Validate ``asset`` for the 5s_bxt coverage endpoints (also the schema name)."""
+    a = asset.lower()
+    if a not in _BXT_VALID_ASSETS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown asset '{asset}'. Valid: {sorted(_BXT_VALID_ASSETS)}",
         )
     return a
 
@@ -173,11 +196,8 @@ async def get_calendar(
     is_current = (year == now_utc.year and month == now_utc.month)
 
     cached = _cal_month_cache.get(cache_key)
-    if cached is not None:
-        if not is_current:
-            return cached["result"]
-        if _time.monotonic() < cached["expires"]:
-            return cached["result"]
+    if cached is not None and _time.monotonic() < cached["expires"]:
+        return cached["result"]
 
     _, days_in = _cal_mod.monthrange(year, month)
     first_day = f"{year}-{month:02d}-01"
@@ -239,7 +259,7 @@ async def get_calendar(
             result = {"asset": a, "year": year, "month": month, "days": days}
             _cal_month_cache[cache_key] = {
                 "result": result,
-                "expires": _time.monotonic() + (_CAL_CURRENT_TTL if is_current else float("inf")),
+                "expires": _time.monotonic() + (_CAL_CURRENT_TTL if is_current else _CAL_PAST_TTL),
             }
             return result
     except Exception as e:
@@ -295,6 +315,286 @@ async def get_day_detail(asset: str, date: str):
     except Exception as e:
         logger.error("perp[%s] day-detail error: %s", a, e)
         return {"asset": a, "error": str(e)}
+
+
+# ── 5s DERIV bucket coverage (btc."5s_bxt") ───────────────────────────────
+# Mirrors the raw-data calendar above but reads the pre-computed 5s signal
+# bucket table written by sol-perp/bxtbuilder_btc_5s.py.  Only assets that
+# actually have a "5s_bxt" table report coverage; others return available=False.
+
+_BXT_EXPECTED_PER_HOUR = 720          # 3600s / 5s
+_BXT_HOUR_GREEN = 700                 # >= this many buckets in an hour = healthy
+_bxt_cal_cache: dict[str, dict] = {}  # key "{asset}:YYYY-MM"
+
+
+def _bxt_table_present(conn, schema: str) -> bool:
+    r = conn.execute(text("""
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = :s AND table_name = '5s_bxt'
+        LIMIT 1
+    """), {"s": schema})
+    return r.first() is not None
+
+
+@router.get("/{asset}/bxt/status")
+async def get_bxt_status(asset: str):
+    """Builder liveness for the 5s bucket table.
+
+    ``is_live`` is true when the newest bucket *start* is < 30s old — the
+    leading edge is owned exclusively by the live builder (the reconciler
+    never writes buckets newer than now-settle), so a fresh max(ts) means
+    the builder itself is keeping up.
+    """
+    a = _check_bxt_asset(asset)
+    try:
+        with engine.connect() as conn:
+            if not _bxt_table_present(conn, a):
+                return {"asset": a, "available": False}
+            r = conn.execute(text(f'SELECT MAX(ts), COUNT(*) FROM {a}."5s_bxt"'))
+            row = r.fetchone()
+            latest, total = (row[0], row[1]) if row else (None, 0)
+            now_utc = datetime.now(timezone.utc)
+            age_s = (now_utc - latest).total_seconds() if latest else None
+            return {
+                "asset": a,
+                "available": True,
+                "latest_bucket": latest.isoformat() if latest else None,
+                "age_s": round(age_s, 1) if age_s is not None else None,
+                "is_live": bool(age_s is not None and age_s < 30),
+                "total_buckets": int(total or 0),
+                "expected_per_hour": _BXT_EXPECTED_PER_HOUR,
+                "hour_green_threshold": _BXT_HOUR_GREEN,
+            }
+    except Exception as e:
+        logger.error("perp[%s] bxt status error: %s", a, e)
+        return {"asset": a, "error": str(e)}
+
+
+@router.get("/{asset}/bxt/calendar")
+async def get_bxt_calendar(
+    asset: str,
+    year: int = Query(default=None),
+    month: int = Query(default=None, ge=1, le=12),
+):
+    """Per-day 5s-bucket counts for a single calendar month (UTC)."""
+    a = _check_bxt_asset(asset)
+    now_utc = datetime.now(timezone.utc)
+    if year is None:
+        year = now_utc.year
+    if month is None:
+        month = now_utc.month
+
+    cache_key = f"{a}:{year}-{month:02d}"
+    is_current = (year == now_utc.year and month == now_utc.month)
+    cached = _bxt_cal_cache.get(cache_key)
+    if cached is not None and _time.monotonic() < cached["expires"]:
+        return cached["result"]
+
+    _, days_in = _cal_mod.monthrange(year, month)
+    first_day = f"{year}-{month:02d}-01"
+    last_day = f"{year}-{month:02d}-{days_in}"
+
+    try:
+        with engine.connect() as conn:
+            if not _bxt_table_present(conn, a):
+                return {"asset": a, "year": year, "month": month, "available": False, "days": []}
+            r = conn.execute(text(f'''
+                SELECT (ts AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS n
+                FROM {a}."5s_bxt"
+                WHERE ts >= (:first)::date AT TIME ZONE 'UTC'
+                  AND ts <  ((:last)::date + 1) AT TIME ZONE 'UTC'
+                GROUP BY 1
+                ORDER BY 1
+            '''), {"first": first_day, "last": last_day})
+            days = [{"date": str(day), "buckets": int(n)} for day, n in r.fetchall()]
+
+            result = {
+                "asset": a, "year": year, "month": month, "available": True,
+                "days": days,
+                "expected_per_day": _BXT_EXPECTED_PER_HOUR * 24,
+                "day_green_threshold": _BXT_HOUR_GREEN * 24,
+            }
+            _bxt_cal_cache[cache_key] = {
+                "result": result,
+                "expires": _time.monotonic() + (_CAL_CURRENT_TTL if is_current else _CAL_PAST_TTL),
+            }
+            return result
+    except Exception as e:
+        logger.error("perp[%s] bxt calendar error: %s", a, e)
+        return {"asset": a, "error": str(e)}
+
+
+@router.get("/{asset}/bxt/day-detail/{date}")
+async def get_bxt_day_detail(asset: str, date: str):
+    """Hourly 5s-bucket counts (0-23 UTC) for one day."""
+    a = _check_bxt_asset(asset)
+    try:
+        with engine.connect() as conn:
+            if not _bxt_table_present(conn, a):
+                return {"asset": a, "date": date, "available": False, "hours": []}
+            r = conn.execute(text(f'''
+                SELECT EXTRACT(HOUR FROM ts AT TIME ZONE 'UTC')::int AS hr, COUNT(*) AS n
+                FROM {a}."5s_bxt"
+                WHERE ts >= (:d)::date AT TIME ZONE 'UTC'
+                  AND ts <  ((:d)::date + 1) AT TIME ZONE 'UTC'
+                GROUP BY 1
+            '''), {"d": date})
+            counts = {row[0]: int(row[1]) for row in r.fetchall()}
+            hours = [{"hour": h, "buckets": counts.get(h, 0)} for h in range(24)]
+            return {
+                "asset": a, "date": date, "available": True, "hours": hours,
+                "expected_per_hour": _BXT_EXPECTED_PER_HOUR,
+                "hour_green_threshold": _BXT_HOUR_GREEN,
+            }
+    except Exception as e:
+        logger.error("perp[%s] bxt day-detail error: %s", a, e)
+        return {"asset": a, "date": date, "error": str(e)}
+
+
+# ── 20-level deep L2 coverage (<schema>.l2_deep) ──────────────────────────
+# Mirrors the 5s_bxt coverage endpoints but reads the REST-polled 20-level book
+# table written by sol-perp/l2_deep_collector.py. Poll-rate driven (not a fixed
+# grid), so "expected" is based on a ~1 Hz target; the calendar/hourly view
+# exists to surface OUTAGES (red/amber hours) rather than exact rate.
+
+_L2DEEP_TARGET_HZ = 1.0
+_L2DEEP_EXPECTED_PER_HOUR = int(3600 * _L2DEEP_TARGET_HZ)   # 3600 @ 1 Hz
+_L2DEEP_HOUR_GREEN = 3000                                   # >= this = healthy hour
+_l2deep_cal_cache: dict[str, dict] = {}                     # key "{asset}:YYYY-MM"
+
+
+def _l2deep_table_present(conn, schema: str) -> bool:
+    r = conn.execute(text("""
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = :s AND table_name = 'l2_deep'
+        LIMIT 1
+    """), {"s": schema})
+    return r.first() is not None
+
+
+@router.get("/{asset}/l2deep/status")
+async def get_l2deep_status(asset: str):
+    """Poller liveness for the 20-level l2_deep table + latest depth sanity."""
+    a = _check_bxt_asset(asset)
+    try:
+        with engine.connect() as conn:
+            if not _l2deep_table_present(conn, a):
+                return {"asset": a, "available": False}
+            r = conn.execute(text(f"SELECT MAX(ts), COUNT(*) FROM {a}.l2_deep"))
+            row = r.fetchone()
+            latest, total = (row[0], row[1]) if row else (None, 0)
+            now_utc = datetime.now(timezone.utc)
+            age_s = (now_utc - latest).total_seconds() if latest else None
+            r = conn.execute(text(f"""
+                SELECT n_bid_levels, n_ask_levels
+                FROM {a}.l2_deep ORDER BY ts DESC LIMIT 1
+            """))
+            lv = r.fetchone()
+            return {
+                "asset": a,
+                "available": True,
+                "latest_snapshot": latest.isoformat() if latest else None,
+                "age_s": round(age_s, 1) if age_s is not None else None,
+                "is_live": bool(age_s is not None and age_s < 15),
+                "total_rows": int(total or 0),
+                "latest_bid_levels": lv[0] if lv else None,
+                "latest_ask_levels": lv[1] if lv else None,
+                "expected_per_hour": _L2DEEP_EXPECTED_PER_HOUR,
+                "hour_green_threshold": _L2DEEP_HOUR_GREEN,
+            }
+    except Exception as e:
+        logger.error("perp[%s] l2deep status error: %s", a, e)
+        return {"asset": a, "error": str(e)}
+
+
+@router.get("/{asset}/l2deep/calendar")
+async def get_l2deep_calendar(
+    asset: str,
+    year: int = Query(default=None),
+    month: int = Query(default=None, ge=1, le=12),
+):
+    """Per-day l2_deep row counts for a single calendar month (UTC)."""
+    a = _check_bxt_asset(asset)
+    now_utc = datetime.now(timezone.utc)
+    if year is None:
+        year = now_utc.year
+    if month is None:
+        month = now_utc.month
+
+    cache_key = f"{a}:{year}-{month:02d}"
+    is_current = (year == now_utc.year and month == now_utc.month)
+    cached = _l2deep_cal_cache.get(cache_key)
+    if cached is not None and _time.monotonic() < cached["expires"]:
+        return cached["result"]
+
+    _, days_in = _cal_mod.monthrange(year, month)
+    first_day = f"{year}-{month:02d}-01"
+    last_day = f"{year}-{month:02d}-{days_in}"
+
+    try:
+        with engine.connect() as conn:
+            if not _l2deep_table_present(conn, a):
+                return {"asset": a, "year": year, "month": month, "available": False, "days": []}
+            r = conn.execute(text(f'''
+                SELECT (ts AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS n
+                FROM {a}.l2_deep
+                WHERE ts >= (:first)::date AT TIME ZONE 'UTC'
+                  AND ts <  ((:last)::date + 1) AT TIME ZONE 'UTC'
+                GROUP BY 1
+                ORDER BY 1
+            '''), {"first": first_day, "last": last_day})
+            days = [{"date": str(day), "rows": int(n)} for day, n in r.fetchall()]
+
+            result = {
+                "asset": a, "year": year, "month": month, "available": True,
+                "days": days,
+                "expected_per_day": _L2DEEP_EXPECTED_PER_HOUR * 24,
+                "day_green_threshold": _L2DEEP_HOUR_GREEN * 24,
+            }
+            _l2deep_cal_cache[cache_key] = {
+                "result": result,
+                "expires": _time.monotonic() + (_CAL_CURRENT_TTL if is_current else _CAL_PAST_TTL),
+            }
+            return result
+    except Exception as e:
+        logger.error("perp[%s] l2deep calendar error: %s", a, e)
+        return {"asset": a, "error": str(e)}
+
+
+@router.get("/{asset}/l2deep/day-detail/{date}")
+async def get_l2deep_day_detail(asset: str, date: str):
+    """Hourly l2_deep row counts (0-23 UTC) for one day + per-hour depth sanity."""
+    a = _check_bxt_asset(asset)
+    try:
+        with engine.connect() as conn:
+            if not _l2deep_table_present(conn, a):
+                return {"asset": a, "date": date, "available": False, "hours": []}
+            r = conn.execute(text(f'''
+                SELECT EXTRACT(HOUR FROM ts AT TIME ZONE 'UTC')::int AS hr,
+                       COUNT(*) AS n,
+                       MIN(n_ask_levels) AS min_lv,
+                       MAX(n_ask_levels) AS max_lv
+                FROM {a}.l2_deep
+                WHERE ts >= (:d)::date AT TIME ZONE 'UTC'
+                  AND ts <  ((:d)::date + 1) AT TIME ZONE 'UTC'
+                GROUP BY 1
+            '''), {"d": date})
+            by_hr = {row[0]: (int(row[1]), row[2], row[3]) for row in r.fetchall()}
+            hours = []
+            for h in range(24):
+                rows, mn, mx = by_hr.get(h, (0, None, None))
+                hours.append({
+                    "hour": h, "rows": rows,
+                    "min_levels": mn, "max_levels": mx,
+                })
+            return {
+                "asset": a, "date": date, "available": True, "hours": hours,
+                "expected_per_hour": _L2DEEP_EXPECTED_PER_HOUR,
+                "hour_green_threshold": _L2DEEP_HOUR_GREEN,
+            }
+    except Exception as e:
+        logger.error("perp[%s] l2deep day-detail error: %s", a, e)
+        return {"asset": a, "date": date, "error": str(e)}
 
 
 @router.get("/{asset}/recent-ticks")

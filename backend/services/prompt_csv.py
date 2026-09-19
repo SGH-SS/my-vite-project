@@ -117,6 +117,16 @@ def _signal_buckets_column_stats(series: list[dict]) -> str:
         "ask_replenish", "bid_replenish", "spread_mean_bps",
         "ask_size_usd", "bid_size_usd", "buy_volume_usd", "sell_volume_usd",
         "d_ask_size", "d_bid_size", "d_buy_volume", "d_sell_volume",
+        # close-based book + replenishment (the variants whose accounting holds)
+        "ask_size_c", "bid_size_c", "ask_replenish_c", "bid_replenish_c",
+        "d_ask_size_c", "d_bid_size_c",
+        # price-invariant spread + uncapped book cost
+        "spread_mean_ticks", "tick_size", "ask_impact_bps", "bid_impact_bps",
+        # order-level flow (fills overstate order arrivals ~1.5x)
+        "sweep_count_buy", "sweep_count_sell",
+        "max_sweep_volume_buy", "max_sweep_volume_sell",
+        # quality
+        "poll_count", "poll_gap_max_ms",
     ]
     rows_out: list[str] = ["# Full-range column statistics (all buckets):"]
     rows_out.append("column,min,max,mean,first,last")
