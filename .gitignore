@@ -32,3 +32,6 @@ Thumbs.db
 
 # Training run artifacts (joblibs here are 5–12MB each, hundreds of MB total)
 **/runs/
+
+# Research trade logs (strategy detail, repo is public)
+public/sol_oi_trades.json

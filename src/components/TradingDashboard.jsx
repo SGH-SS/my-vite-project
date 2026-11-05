@@ -15,6 +15,11 @@ import StratHub from './StratHub.jsx';
 import BucketDashboard from './bucket.jsx';
 import L2DeepDashboard from './L2deep.jsx';
 import BxtVisualizer from './BxtVisualizer.jsx';
+import SolOiViz from './SolOiViz.jsx';
+import Hyperliquid from './hyperliquid/Hyperliquid.jsx';
+import Ranker from './ranker/Ranker.jsx';
+import Play from './play/Play.jsx';
+import CCode from './ccode/CCode.jsx';
 import SelectedCandlesPanel from './shared/SelectedCandlesPanel.jsx';
 import { useTrading } from '../context/TradingContext';
 import { useDateRanges } from '../hooks/useDateRanges';
@@ -3672,7 +3677,7 @@ const TradingDashboard = () => {
     <div className={`min-h-screen transition-colors duration-200 p-6 ${
       isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      <div className="max-w-7xl mx-auto">
+      <div className={dashboardMode === 'ccode' ? 'mx-auto' : 'max-w-7xl mx-auto'}>
         {/* Header with Dashboard Toggle */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -3720,6 +3725,16 @@ const TradingDashboard = () => {
                     (isDarkMode ? 'bg-cyan-900/30 text-cyan-300' : 'bg-cyan-100 text-cyan-700') :
                   dashboardMode === 'bxtviz' ?
                     (isDarkMode ? 'bg-teal-900/30 text-teal-300' : 'bg-teal-100 text-teal-700') :
+                  dashboardMode === 'soloiviz' ?
+                    (isDarkMode ? 'bg-amber-900/30 text-amber-300' : 'bg-amber-100 text-amber-700') :
+                  dashboardMode === 'hyperliquid' ?
+                    (isDarkMode ? 'bg-emerald-900/30 text-emerald-300' : 'bg-emerald-100 text-emerald-700') :
+                  dashboardMode === 'ranker' ?
+                    (isDarkMode ? 'bg-lime-900/30 text-lime-300' : 'bg-lime-100 text-lime-700') :
+                  dashboardMode === 'play' ?
+                    (isDarkMode ? 'bg-rose-900/30 text-rose-300' : 'bg-rose-100 text-rose-700') :
+                  dashboardMode === 'ccode' ?
+                    (isDarkMode ? 'bg-sky-900/30 text-sky-300' : 'bg-sky-100 text-sky-700') :
                     (isDarkMode ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700')
                 }`}>
                   {dashboardMode === 'data' ? 'Data Analytics' : 
@@ -3739,6 +3754,11 @@ const TradingDashboard = () => {
                    dashboardMode === 'bxt' ? 'Deriv BXT' :
                    dashboardMode === 'l2deep' ? 'L2 Deep' :
                    dashboardMode === 'bxtviz' ? 'BXT Visualizer' :
+                   dashboardMode === 'soloiviz' ? 'SOL OI Viz' :
+                   dashboardMode === 'hyperliquid' ? 'Hyperliquid' :
+                   dashboardMode === 'ranker' ? 'Ranker' :
+                   dashboardMode === 'play' ? 'BTC Play' :
+                   dashboardMode === 'ccode' ? 'Server CCode' :
                    'AI Assistant'}
                 </div>
               </div>
@@ -3779,6 +3799,16 @@ const TradingDashboard = () => {
                     ? 'REST-polled 20-level order book coverage • Per-coin calendar + hourly'
                     : dashboardMode === 'bxtviz'
                     ? 'BXT mid-price OHLC candles • Stacked 5s buckets · quality-honest rendering'
+                    : dashboardMode === 'soloiviz'
+                    ? 'SOL liquidation-cascade strategies • Preloaded trades on the BXT Visualizer · step with [ ]'
+                    : dashboardMode === 'hyperliquid'
+                    ? 'Hyperliquid account • Live positions · liquidation from the exchange · V2 runner'
+                    : dashboardMode === 'ranker'
+                    ? '10-slot alt long/short • Hourly LightGBM ranker · maker entries · live book & stats'
+                    : dashboardMode === 'play'
+                    ? 'BTC price triggers • Touch a level from above → all available capital long at that leverage (cross)'
+                    : dashboardMode === 'ccode'
+                    ? 'Claude Code on the Tokyo server • Live terminal · chats · server files'
                     : 'Intelligent trading assistant • Natural language market analysis'}
                 </p>
             </div>
@@ -3823,6 +3853,11 @@ const TradingDashboard = () => {
                   { mode: 'bxt',           icon: '◧',  label: 'Deriv BXT', activeClass: isDarkMode ? 'text-fuchsia-400 ring-fuchsia-500/50' : 'text-fuchsia-600 ring-fuchsia-200' },
                   { mode: 'l2deep',        icon: '▦',  label: 'L2 Deep',   activeClass: isDarkMode ? 'text-cyan-400 ring-cyan-500/50' : 'text-cyan-600 ring-cyan-200' },
                   { mode: 'bxtviz',        icon: '🕯️', label: 'BXT Viz',   activeClass: isDarkMode ? 'text-teal-400 ring-teal-500/50' : 'text-teal-600 ring-teal-200' },
+                  { mode: 'soloiviz',      icon: '🎯', label: 'SOL OI Viz', activeClass: isDarkMode ? 'text-amber-400 ring-amber-500/50' : 'text-amber-600 ring-amber-200' },
+                  { mode: 'hyperliquid',   icon: '⚡', label: 'Hyperliquid', activeClass: isDarkMode ? 'text-emerald-400 ring-emerald-500/50' : 'text-emerald-600 ring-emerald-200' },
+                  { mode: 'ranker',        icon: '🏁', label: 'Ranker',     activeClass: isDarkMode ? 'text-lime-400 ring-lime-500/50' : 'text-lime-600 ring-lime-200' },
+                  { mode: 'play',          icon: '🎲', label: 'BTC Play',   activeClass: isDarkMode ? 'text-rose-400 ring-rose-500/50' : 'text-rose-600 ring-rose-200' },
+                  { mode: 'ccode',         icon: '🖥️', label: 'Server CCode', activeClass: isDarkMode ? 'text-sky-400 ring-sky-500/50' : 'text-sky-600 ring-sky-200' },
                 ].map(({ mode, icon, label, activeClass }) => {
                   const isActive = dashboardMode === mode;
                   return (
@@ -3838,8 +3873,8 @@ const TradingDashboard = () => {
                       <span className="text-base leading-none">{icon}</span>
                       <span className={`overflow-hidden whitespace-nowrap text-xs transition-all duration-150 ease-out ${
                         isActive
-                          ? 'max-w-[72px] opacity-100 ml-1.5'
-                          : 'max-w-0 opacity-0 group-hover:max-w-[72px] group-hover:opacity-100 group-hover:ml-1.5'
+                          ? 'max-w-[96px] opacity-100 ml-1.5'
+                          : 'max-w-0 opacity-0 group-hover:max-w-[96px] group-hover:opacity-100 group-hover:ml-1.5'
                       }`}>
                         {label}
                       </span>
@@ -3936,6 +3971,16 @@ const TradingDashboard = () => {
           <L2DeepDashboard isDarkMode={isDarkMode} />
         ) : dashboardMode === 'bxtviz' ? (
           <BxtVisualizer isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'soloiviz' ? (
+          <SolOiViz isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'hyperliquid' ? (
+          <Hyperliquid isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'ranker' ? (
+          <Ranker isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'play' ? (
+          <Play isDarkMode={isDarkMode} />
+        ) : dashboardMode === 'ccode' ? (
+          <CCode isDarkMode={isDarkMode} />
         ) : (
           <>
             {/* Original Data Dashboard Content */}

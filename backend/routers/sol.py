@@ -120,7 +120,7 @@ class TransferRequest(BaseModel):
     network: str = "mainnet"
     amount: float
     to_perp: bool
-    proxy_index: int = -1
+    proxy_index: int = 0
 
 
 class PlaceOrderRequest(BaseModel):
@@ -131,21 +131,21 @@ class PlaceOrderRequest(BaseModel):
     is_cross: bool = False
     tp_price: float | None = None
     sl_price: float | None = None
-    proxy_index: int = -1
+    proxy_index: int = 0
 
 
 class CancelOrderRequest(BaseModel):
     network: str = "mainnet"
     coin: str = "BTC"
     oid: int
-    proxy_index: int = -1
+    proxy_index: int = 0
 
 
 class UpdateLeverageRequest(BaseModel):
     network: str = "mainnet"
     leverage: int
     is_cross: bool = False
-    proxy_index: int = -1
+    proxy_index: int = 0
 
 
 logger = logging.getLogger(__name__)
@@ -514,7 +514,7 @@ async def get_recent_trades(
 
 
 @router.get("/hl-balances")
-def get_hl_balances(proxy_index: int = Query(-1)):
+def get_hl_balances(proxy_index: int = Query(0)):
     """Fetch account balances from both mainnet and testnet Hyperliquid accounts.
 
     Uses the same unified-aware logic as hl-net-balances.
@@ -618,7 +618,7 @@ def get_hl_proxies():
 
 
 @router.get("/hl-latency")
-def get_hl_latency(proxy_index: int = Query(-1)):
+def get_hl_latency(proxy_index: int = Query(0)):
     """Run latency benchmark against Hyperliquid info endpoint.
 
     Tests: allMids (light), clearinghouseState (medium), spotClearinghouseState (medium).
@@ -678,7 +678,7 @@ def get_hl_latency(proxy_index: int = Query(-1)):
 
 
 @router.get("/hl-net-balances")
-def get_hl_net_balances(network: str = Query("mainnet"), proxy_index: int = Query(-1)):
+def get_hl_net_balances(network: str = Query("mainnet"), proxy_index: int = Query(0)):
     """Fetch balances for a single network.
 
     For unified accounts the spot endpoint is the source of truth for
@@ -766,7 +766,7 @@ def get_hl_net_balances(network: str = Query("mainnet"), proxy_index: int = Quer
 
 
 @router.get("/hl-btc-price")
-def get_hl_btc_price(proxy_index: int = Query(-1), network: str = Query("mainnet")):
+def get_hl_btc_price(proxy_index: int = Query(0), network: str = Query("mainnet")):
     """Get BTC-USDC perp mark price via metaAndAssetCtxs (always from mainnet)."""
     try:
         cfg = _load_hl_config()
@@ -806,7 +806,7 @@ def get_hl_btc_price(proxy_index: int = Query(-1), network: str = Query("mainnet
 
 
 @router.get("/hl-btc-meta")
-def get_hl_btc_meta(proxy_index: int = Query(-1), network: str = Query("mainnet")):
+def get_hl_btc_meta(proxy_index: int = Query(0), network: str = Query("mainnet")):
     """Get BTC perpetual metadata (max leverage, szDecimals, margin tiers)."""
     try:
         cfg = _load_hl_config()
@@ -936,7 +936,7 @@ def _round_price(px: float) -> float:
 
 
 @router.get("/hl-open-orders")
-def get_hl_open_orders(network: str = Query("mainnet"), proxy_index: int = Query(-1)):
+def get_hl_open_orders(network: str = Query("mainnet"), proxy_index: int = Query(0)):
     """Get open orders for BTC on the specified network."""
     try:
         cfg = _load_hl_config()

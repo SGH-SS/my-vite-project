@@ -20,6 +20,10 @@ from routers import sol
 from routers import perps
 from routers import strathub
 from routers import bxtviz
+from routers import hyperliquid
+from routers import ranker as ranker_router
+from routers import play as play_router
+from routers import ccode as ccode_router
 from services.sol_broadcaster import broadcaster
 from services.perps_broadcaster import perps_broadcaster
 
@@ -70,6 +74,10 @@ app.include_router(sol.router)
 app.include_router(perps.router)
 app.include_router(strathub.router)
 app.include_router(bxtviz.router)
+app.include_router(hyperliquid.router)
+app.include_router(ranker_router.router)
+app.include_router(play_router.router)
+app.include_router(ccode_router.router)
 
 @app.on_event("startup")
 async def startup_event():

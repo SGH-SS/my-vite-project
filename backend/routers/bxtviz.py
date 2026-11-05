@@ -22,7 +22,8 @@ Design rules (research/README.md — do not re-litigate casually):
   rows so the chart can draw whitespace instead of silently bridging.
 * **Quality is never silently painted over**: each candle carries
   ``ideal`` (bucket_ideal, coarse-contiguity included when stacked) and
-  ``revised`` (was_revised OR'd over sub-buckets) so the frontend can
+  ``revised`` (was_revised in a majority of sub-buckets) and ``mac_revised``
+  (Mac-replica fills in a majority of sub-buckets) so the frontend can
   grey/flag degraded candles.
 """
 
@@ -114,11 +115,9 @@ async def candles(
             f"≈ {MAX_STORED_ROWS * 5 / 86400:.0f} days) — shorten the window",
         )
 
-    # ── the one true stacker, with a 1-tf LEFT WARMUP ─────────────────────
-    # bucket_ideal requires contiguity with the PREVIOUS coarse bucket, which
-    # the first bucket of a fetch can never prove — so fetch one extra tf on
-    # the left (research-panel warmup pattern) and trim it after stacking.
-    warmup_start = grid_start - timedelta(seconds=tf_s)
+    # Two preceding coarse buckets establish both derivative validity flags
+    # for the first requested candle. Trim these warmup rows after stacking.
+    warmup_start = grid_start - timedelta(seconds=2 * tf_s)
     with engine.connect() as conn:
         out = feature_builder.signal_buckets(
             conn, schema, warmup_start.isoformat(), grid_end.isoformat(), bucket_s=tf_s,
@@ -153,9 +152,18 @@ async def candles(
             "v": buy_v + sell_v,
             "buy_v": buy_v,
             "sell_v": sell_v,
+            # taker trade COUNTS (summed when stacked) — the flow booster's
+            # activity floor: a single print is a 100/0 split and an empty tape
+            "buy_n": row.get("buy_count"),
+            "sell_n": row.get("sell_count"),
             "ideal": bool(row.get("bucket_ideal")),
             "revised": bool(row.get("was_revised")),
+            "mac_revised": bool(row.get("mac_revised")),
             "n_sub": row.get("n_sub", 1),
+            "complete": row.get("complete"),
+            "sampling_valid": row.get("sampling_valid"),
+            "derivative_1_valid": row.get("derivative_1_valid"),
+            "derivative_2_valid": row.get("derivative_2_valid"),
             # wall sizes in COIN units (never _usd) for the above/below overlay.
             # Stacking semantics come from signal_buckets, not from here:
             #   ask_size/bid_size   — poll-weighted MEAN over the bucket
@@ -210,13 +218,21 @@ async def candles(
             with engine.connect() as conn:
                 rows = conn.execute(text(f'''
                     SELECT (floor(extract(epoch FROM ts) / :tf) * :tf)::bigint AS gk,
-                           AVG(bid_sum) AS b, AVG(ask_sum) AS a, COUNT(*) AS n
+                           AVG(bid_sum) AS b, AVG(ask_sum) AS a, COUNT(*) AS n,
+                           MIN(ts) AS first_ts, MAX(ts) AS last_ts,
+                           MAX(extract(epoch FROM ts-prev_ts)) AS internal_gap_s,
+                           AVG(bid_near) AS bid_near, AVG(ask_near) AS ask_near,
+                           COUNT(received_at) AS received_known,
+                           MAX(extract(epoch FROM received_at-ts)) AS max_receive_latency_s
                     FROM (
-                        SELECT ts,
+                        SELECT ts, received_at,
+                               lag(ts) OVER (PARTITION BY floor(extract(epoch FROM ts)/:tf) ORDER BY ts) AS prev_ts,
                                (SELECT SUM((e->>'sz')::float8)
                                   FROM jsonb_array_elements(bids) e) AS bid_sum,
                                (SELECT SUM((e->>'sz')::float8)
-                                  FROM jsonb_array_elements(asks) e) AS ask_sum
+                                  FROM jsonb_array_elements(asks) e) AS ask_sum,
+                               (SELECT SUM((e->>'sz')::float8) FROM jsonb_array_elements(bids) WITH ORDINALITY AS z(e,n) WHERE n<=5) AS bid_near,
+                               (SELECT SUM((e->>'sz')::float8) FROM jsonb_array_elements(asks) WITH ORDINALITY AS z(e,n) WHERE n<=5) AS ask_near
                         FROM {schema}."l2_deep"
                         WHERE ts >= :s AND ts < :u
                     ) x
@@ -225,13 +241,24 @@ async def candles(
                        "u": grid_end.isoformat()}).fetchall()
             deep = {int(r[0]): (float(r[1]) if r[1] is not None else None,
                                 float(r[2]) if r[2] is not None else None,
-                                int(r[3])) for r in rows}
+                                int(r[3]), r[4:]) for r in rows}
             for c in candles_out:
                 if c["present"]:
-                    b, a, n = deep.get(c["t"], (None, None, 0))
+                    b, a, n, detail = deep.get(c["t"], (None, None, 0, None))
                     c["l20_bid"] = b
                     c["l20_ask"] = a
                     c["l20_polls"] = n
+                    if detail:
+                        first_ts,last_ts,internal_gap,bnear,anear,received_known,max_latency = detail
+                        tail_age=c['t']+tf_s-last_ts.timestamp()
+                        c['l20_last_snapshot_age_s']=tail_age
+                        c['l20_max_gap_s']=max(first_ts.timestamp()-c['t'],tail_age,float(internal_gap or 0))
+                        c['l20_receive_timestamp_coverage']=int(received_known)/n
+                        c['l20_max_receive_latency_s']=float(max_latency) if max_latency is not None else None
+                        c['l20_same_snapshot_near_bid']=float(bnear) if bnear is not None else None
+                        c['l20_same_snapshot_near_ask']=float(anear) if anear is not None else None
+                        c['l20_same_snapshot_far_bid']=b-float(bnear) if b is not None and bnear is not None else None
+                        c['l20_same_snapshot_far_ask']=a-float(anear) if a is not None and anear is not None else None
         except Exception:
             logger.exception("l2_deep aggregation failed for %s", schema)
 
@@ -248,6 +275,7 @@ async def candles(
         "missing": expected - actual,
         "ideal": sum(1 for c in candles_out if c.get("ideal")),
         "revised": sum(1 for c in candles_out if c.get("revised")),
+        "mac_revised": sum(1 for c in candles_out if c.get("mac_revised")),
         "stored_5s_rows": summary.get("stored_5s_rows", 0),
         "candles": candles_out,
     }

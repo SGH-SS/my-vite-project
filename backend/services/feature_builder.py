@@ -123,6 +123,8 @@ def _side_levels(raw: Any, best_px: float | None) -> tuple[list[tuple[float, flo
     for band in _L2_DEPTH_BANDS:
         sub = lv[:band]
         agg[f"size_{band}"] = sum(p[1] for p in sub)
+        agg[f"notional_{band}"] = sum(p[0]*p[1] for p in sub)
+        agg[f"orders_{band}"] = sum(p[2] for p in sub)
     if best_px and best_px > 0:
         top = lv[:_L2_FLAT_LEVELS]
         tot = sum(p[1] for p in top)
@@ -147,11 +149,13 @@ def _raw_l2_window_impl(
     against raw at all — and for ``l2_deep`` the sizes below level 5 are the only
     reason the table exists.
     """
+    source_expr = "'rest'::text" if deep else 'source_kind'
     r = conn.execute(
         text(
             f"""
             SELECT ts, best_bid, best_ask, mid_price, spread,
-                   n_bid_levels, n_ask_levels, bids, asks
+                   n_bid_levels, n_ask_levels, bids, asks, received_at, ingest_ts, collector_id,
+                   {source_expr} AS source_kind
             FROM {schema}.{table}
             WHERE ts >= :since AND ts < :until
             ORDER BY ts
@@ -176,7 +180,7 @@ def _raw_l2_window_impl(
     impacts: list[float] = []
     top_band = _L2_DEPTH_BANDS[-1] if deep else _L2_FLAT_LEVELS
     for row in rows:
-        ts, bb, ba, mid, sp, nbl, nal, bids_raw, asks_raw = row
+        ts, bb, ba, mid, sp, nbl, nal, bids_raw, asks_raw, received, persisted, collector_id, source_kind = row
         mid_f, sp_f = _f(mid), _f(sp)
         bb_f, ba_f = _f(bb), _f(ba)
         if mid_f is not None:
@@ -196,6 +200,10 @@ def _raw_l2_window_impl(
             "best_bid": bb_f, "best_ask": ba_f,
             "mid": mid_f, "spread": sp_f,
             "bid_levels": nbl, "ask_levels": nal,
+            "received_at": received.isoformat() if received else None,
+            "persisted_at": persisted.isoformat() if persisted else None,
+            "collector_id": collector_id, "source_kind": source_kind,
+            "receive_latency_ms": (received-ts).total_seconds()*1000 if received else None,
         }
         tick = min([t for t in (bagg.get("tick"), aagg.get("tick")) if t], default=None)
         rec["tick"] = tick
@@ -211,6 +219,13 @@ def _raw_l2_window_impl(
         for band in bands:
             rec[f"bid_size_{band}"] = bagg.get(f"size_{band}")
             rec[f"ask_size_{band}"] = aagg.get(f"size_{band}")
+            for side, agg in [('bid',bagg),('ask',aagg)]:
+                rec[f"{side}_displayed_notional_{band}"] = agg.get(f"notional_{band}")
+                rec[f"{side}_displayed_order_count_{band}"] = agg.get(f"orders_{band}")
+        rec['observed_price_spacing'] = tick
+        if deep:
+            for side,agg in [('bid',bagg),('ask',aagg)]:
+                rec[f'{side}_same_snapshot_far_6_20'] = (agg.get('size_20') or 0)-(agg.get('size_5') or 0)
         rec["bid_size_usd"] = bagg.get("size_usd")
         rec["ask_size_usd"] = aagg.get("size_usd")
         rec["bid_ppl"] = bagg.get("n")
@@ -297,7 +312,7 @@ def raw_marks_window(
         text(
             f"""
             SELECT ts, mark_px, oracle_px, mid_px, premium,
-                   funding, open_interest, day_ntl_vlm
+                   funding, open_interest, day_ntl_vlm, received_at, ingest_ts, collector_id, source_kind
             FROM {schema}.mark_price
             WHERE ts >= :since AND ts < :until
             ORDER BY ts
@@ -314,15 +329,24 @@ def raw_marks_window(
     series = []
     funds, ois, prems = [], [], []
     ts_epoch: list[float] = []
+    funding_epoch: list[float] = []
     for row in rows:
-        ts, mark, oracle, mid, premium, funding, oi, vol = row
+        ts, mark, oracle, mid, premium, funding, oi, vol, received, persisted, collector_id, source_kind = row
         series.append({
             "ts": ts.isoformat(),
             "mark": _f(mark), "oracle": _f(oracle), "mid": _f(mid),
             "premium": _f(premium), "funding": _f(funding),
             "open_interest": _f(oi), "day_ntl_vlm": _f(vol),
+            "ts_basis": "collector_receive_time; exchange timestamp unavailable",
+            "received_at": received.isoformat() if received else None,
+            "persisted_at": persisted.isoformat() if persisted else None,
+            "collector_id": collector_id, "source_kind": source_kind,
+            "open_interest_matched_units_estimate": (_f(oi)/2 if schema=='spx' and _f(oi) is not None else None),
+            "oi_unit_contract": ("SPX empirical two-sided count; divisor 2; does not identify buyer/seller opening positions" if schema=='spx' else "raw venue units; no unverified normalization applied"),
         })
-        if _f(funding) is not None: funds.append(_f(funding))
+        if _f(funding) is not None:
+            funds.append(_f(funding))
+            funding_epoch.append(ts.timestamp())
         if _f(oi) is not None: ois.append(_f(oi))
         if _f(premium) is not None: prems.append(_f(premium))
         ts_epoch.append(ts.timestamp())
@@ -335,7 +359,7 @@ def raw_marks_window(
             "rows": total,
             "funding_first": funds[0] if funds else None,
             "funding_last":  funds[-1] if funds else None,
-            "funding_slope_per_s": _slope(ts_epoch[:len(funds)], funds) if len(funds) >= 2 else None,
+            "funding_slope_per_s": _slope(funding_epoch, funds) if len(funds) >= 2 else None,
             "oi_first": ois[0] if ois else None,
             "oi_last":  ois[-1] if ois else None,
             "oi_change_pct": (
@@ -365,7 +389,7 @@ def raw_trades_window(
     rows = conn.execute(
         text(
             f"""
-            SELECT ts, side, px, sz
+            SELECT ts, side, px, sz, received_at, ingest_ts, collector_id, source_kind
             FROM {schema}.trades
             WHERE ts >= :s AND ts < :u
             ORDER BY ts
@@ -373,8 +397,11 @@ def raw_trades_window(
         ),
         {"s": since, "u": until},
     ).fetchall()
-    series = [{"ts": r0.isoformat(), "side": s, "px": _f(p), "sz": _f(z)}
-              for r0, s, p, z in rows]
+    series = [{"ts": r0.isoformat(), "side": s, "px": _f(p), "sz": _f(z),
+               "received_at": received.isoformat() if received else None,
+               "persisted_at": persisted.isoformat() if persisted else None,
+               "collector_id": collector_id, "source_kind": source_kind}
+              for r0, s, p, z, received, persisted, collector_id, source_kind in rows]
 
     total_buy = sum((s.get("sz") or 0) for s in series if s.get("side") == "B")
     total_sell = sum((s.get("sz") or 0) for s in series if s.get("side") == "A")
@@ -708,6 +735,8 @@ def effective_spread(
 
     return {
         "kind": "effective_spread",
+        "measurement": "quoted_spread",
+        "legacy_key": True,
         "asset": schema,
         "window": _w(since, until),
         "summary": {
@@ -741,6 +770,8 @@ def quote_churn_rate(
     rates = [s["snaps_per_s"] for s in series]
     return {
         "kind": "quote_churn_rate",
+        "measurement": "snapshot_arrival_rate",
+        "legacy_key": True,
         "asset": schema,
         "window": _w(since, until),
         "summary": {
@@ -1412,15 +1443,15 @@ _BXT_COMPONENTS = _BXT_S0_KEYS + _BXT_S1_KEYS + _BXT_S2_KEYS                    
 
 # Quality flags — stored alongside the components but deliberately not counted
 # as components. bucket_ideal is derived (see _bxt_bucket_ideal), never stored.
-_BXT_QUALITY_KEYS = ["prev_contiguous", "has_trades", "poll_gap_max_ms", "was_revised"]
+_BXT_QUALITY_KEYS = ["prev_contiguous", "has_trades", "poll_gap_max_ms", "was_revised", "mac_revised", "mac_sourced"]
 
 # ts is the bucket START. See bxtbuilder_5s's module docstring; these numbers are
 # echoed into every signal_buckets payload so a consumer can't silently build a
 # label that reads 5 seconds of its own future.
 BXT_TS_CONVENTION = "bucket_start"
 BXT_BUCKET_END_S = 5      # ts + this = last instant of data in the row
-BXT_FIRST_AVAILABLE_S = 8 # ts + this = when the builder actually wrote the row
-BXT_FINAL_S = 120         # ts + this = past the reconciler settle window
+BXT_FIRST_AVAILABLE_S = 8 # scheduled target; actual publication is separately recorded
+BXT_FINAL_S = None        # late inputs can revise arbitrarily old rows
 
 _BXT_MIN_POLLS = 7        # below this the feed was throttled (June 15-24 2026)
 _BXT_MAX_POLL_GAP_MS = 1500
@@ -1441,11 +1472,22 @@ def _bxt_bucket_ideal(row: dict[str, Any]) -> bool | None:
     if pc is None:
         return None
     return bool(
-        pc >= _BXT_MIN_POLLS
+        _bxt_sampling_valid(row)
         and row.get("prev_contiguous")
         and gap is not None and gap < _BXT_MAX_POLL_GAP_MS
         and not row.get("was_revised")
     )
+
+
+def _bxt_sampling_valid(row: dict[str, Any]) -> bool:
+    """Sampling evidence only; never include the future revision label."""
+    return bool((row.get("poll_count") or 0) >= _BXT_MIN_POLLS
+                and row.get("poll_gap_max_ms") is not None
+                and row["poll_gap_max_ms"] < _BXT_MAX_POLL_GAP_MS
+                and row.get('mid_c') is not None
+                and row.get('ask_size_c') is not None
+                and row.get('bid_size_c') is not None
+                and row.get('spread_l') is not None and row['spread_l'] >= 0)
 
 
 def _bxt_state1(cur: dict, prev: dict) -> dict[str, Any]:
@@ -1501,9 +1543,11 @@ def _stack_state0(base: list[dict], eff_bucket_s: int) -> tuple[list[dict], list
     min-low / last-close / poll-weighted-mean, close depth takes the LAST
     sub-bucket's close, tick_size takes the MIN, sweep extremes take the MAX.
 
-    Quality flags coarsen conservatively: poll_gap_max_ms MAX, has_trades and
-    was_revised OR, prev_contiguous AND over the sub-buckets (the caller also
-    requires coarse-bucket contiguity before trusting derivatives).
+    Quality flags coarsen as follows: poll_gap_max_ms MAX, has_trades and
+    mac_sourced OR, prev_contiguous AND over the sub-buckets (the caller also
+    requires coarse-bucket contiguity before trusting derivatives). was_revised
+    and mac_revised require a MAJORITY of sub-buckets; the raw counts are kept
+    as revised_buckets / mac_revised_buckets.
     """
     from collections import OrderedDict
     groups: "OrderedDict[int, list[dict]]" = OrderedDict()
@@ -1568,10 +1612,26 @@ def _stack_state0(base: list[dict], eff_bucket_s: int) -> tuple[list[dict], list
             row[c] = _last(c)
             row[m] = _wmean(m)
 
+        # Native buckets can use different observed spacing. Their tick-valued
+        # spreads cannot be averaged as if they shared a scale. Re-express the
+        # absolute coarse spreads using this coarse bucket's spacing.
+        spacing = row.get('tick_size')
+        for suffix in ('o','h','l','c','mean'):
+            value = row.get('spread_'+suffix)
+            row['spread_'+suffix+'_ticks'] = value/spacing if value is not None and spacing and spacing>0 else None
+
         row["poll_gap_max_ms"] = _mx("poll_gap_max_ms")
         row["has_trades"] = any(bool(x.get("has_trades")) for x in subs)
-        row["was_revised"] = any(bool(x.get("was_revised")) for x in subs)
+        revised = sum(1 for x in subs if x.get("was_revised"))
+        mac_revised = sum(1 for x in subs if x.get("mac_revised"))
+        row["revised_buckets"] = revised
+        row["mac_revised_buckets"] = mac_revised
+        row["was_revised"] = revised * 2 > len(subs)
+        row["mac_revised"] = mac_revised * 2 > len(subs)
+        row["mac_sourced"] = any(bool(x.get("mac_sourced")) for x in subs)
         row["prev_contiguous"] = all(bool(x.get("prev_contiguous")) for x in subs)
+        row["complete"] = [x["_epoch"] for x in subs] == list(range(ck, ck + eff_bucket_s, 5))
+        row["sampling_valid"] = row["complete"] and all(_bxt_sampling_valid(x) for x in subs)
         s0.append(row)
     return s0, keys
 
@@ -1609,6 +1669,10 @@ def signal_buckets(
     fields in the summary before building any forward-looking label.
     """
     bucket_s = int(bucket_s or 5)
+    if bucket_s < 5 or bucket_s % 5:
+        raise ValueError("bucket_s must be a positive multiple of 5")
+    if schema not in {"btc", "eth", "sol", "spx", "lighter_btc"}:
+        raise ValueError("unsupported BXT schema")
     stack_n = max(1, bucket_s // 5)
     eff_bucket_s = 5 * stack_n
 
@@ -1651,6 +1715,12 @@ def signal_buckets(
             for c in read_cols:
                 row[c] = d[c]
             row["bucket_ideal"] = _bxt_bucket_ideal(d)
+            row["complete"] = True
+            row["sampling_valid"] = _bxt_sampling_valid(d)
+            row["derivative_1_valid"] = bool(idx >= 1 and d["_epoch"]-base[idx-1]["_epoch"] == 5
+                and row["sampling_valid"] and _bxt_sampling_valid(base[idx-1]))
+            row["derivative_2_valid"] = bool(idx >= 2 and row["derivative_1_valid"]
+                and base[idx-1]["_epoch"]-base[idx-2]["_epoch"] == 5 and _bxt_sampling_valid(base[idx-2]))
             series.append(row)
     else:
         # ── stack to coarser horizon, recompute derivatives ───────────────
@@ -1658,7 +1728,8 @@ def signal_buckets(
         s1: list[dict[str, Any]] = [{}]
         for i in range(1, len(s0)):
             contiguous = (coarse_keys[i] - coarse_keys[i - 1]) == eff_bucket_s
-            s1.append(_bxt_state1(s0[i], s0[i - 1]) if contiguous else {})
+            valid = contiguous and s0[i]["sampling_valid"] and s0[i-1]["sampling_valid"]
+            s1.append(_bxt_state1(s0[i], s0[i - 1]) if valid else {})
         s2: list[dict[str, Any]] = [{}, {}]
         for i in range(2, len(s0)):
             s2.append(_bxt_state2(s1[i], s1[i - 1]) if (s1[i] and s1[i - 1]) else {})
@@ -1673,17 +1744,19 @@ def signal_buckets(
                 row[k] = row0.get(k)
             for k in _BXT_QUALITY_KEYS:
                 row[k] = row0.get(k)
-            if i >= 1:
-                for k in _BXT_S1_KEYS:
-                    row[k] = s1[i].get(k)
-            if i >= 2:
-                for k in _BXT_S2_KEYS:
-                    row[k] = s2[i].get(k)
+            for k in _BXT_S1_KEYS:
+                row[k] = s1[i].get(k)
+            for k in _BXT_S2_KEYS:
+                row[k] = s2[i].get(k)
             # A coarse bucket is only OK if its sub-buckets are AND it is itself
             # contiguous with the previous coarse bucket.
             coarse_contig = i >= 1 and (coarse_keys[i] - coarse_keys[i - 1]) == eff_bucket_s
             ok = _bxt_bucket_ideal({**row0, "poll_count": (row0.get("poll_count") or 0) / stack_n})
-            row["bucket_ideal"] = bool(ok) and coarse_contig
+            row["complete"] = row0["complete"]
+            row["sampling_valid"] = row0["sampling_valid"]
+            row["derivative_1_valid"] = bool(s1[i])
+            row["derivative_2_valid"] = bool(s2[i])
+            row["bucket_ideal"] = bool(ok) and row0["sampling_valid"] and bool(s1[i])
             series.append(row)
 
     # ── summary ───────────────────────────────────────────────────────────
@@ -1710,10 +1783,25 @@ def signal_buckets(
         "bucket_end_s": eff_bucket_s,
         "first_available_s": eff_bucket_s + (BXT_FIRST_AVAILABLE_S - BXT_BUCKET_END_S),
         "final_s": BXT_FINAL_S,
+        "reconciliation_min_age_s": 120,
+        "availability_is_schedule_estimate": True,
+        "calculation_version": "bxt-2026-09-20.1",
+        "revision_flag_is_retrospective": True,
+        "measurement_contract": {
+            "replenish": "moving top-five depth-change plus fixed-bucket aggressive flow; net residual, not observed additions",
+            "size_usd": "touch-valued depth proxy; exact sum(price*quantity) is available in raw L2 output",
+            "ppl": "displayed order count in observed levels; not people",
+            "impact_bps": "cost of all displayed top-five quantity versus side touch; variable quantity",
+            "tick_size": "minimum observed occupied-level spacing; not a legal order-price increment",
+            "d_dd": "finite differences per bucket; rate alternatives divide d by bucket_s and dd by bucket_s squared",
+            "coarse_span_ticks": "poll-weighted native-bucket grid spans; raw per-poll distances cannot be recovered exactly from rounded stored spans",
+        },
+        "trade_completeness": "unknown; has_trades only reports observed prints",
         "buckets_ideal": len(ideal_rows),
         "buckets_ideal_pct": (100.0 * len(ideal_rows) / len(series)) if series else None,
         "buckets_no_trades": sum(1 for s in series if s.get("has_trades") is False),
         "buckets_revised": sum(1 for s in series if s.get("was_revised")),
+        "buckets_mac_revised": sum(1 for s in series if s.get("mac_revised")),
         "buckets_low_polls": sum(1 for s in series
                                  if (s.get("poll_count") or 0) < _BXT_MIN_POLLS * stack_n),
         "mid_first": mid_means[0] if mid_means else None,

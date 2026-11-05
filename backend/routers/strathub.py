@@ -87,8 +87,8 @@ GROUPS: list[dict[str, Any]] = [
             {"key": "l2_imbalance",      "label": "Full-book L2 imbalance",     "stored": False},
             {"key": "microprice",        "label": "Microprice + skew (bps)",  "stored": False},
             {"key": "top_of_book_depth", "label": "Top-of-book depth ($)",    "stored": False},
-            {"key": "effective_spread",  "label": "Effective spread (bps)",   "stored": False},
-            {"key": "quote_churn_rate",  "label": "Quote churn rate",         "stored": False},
+            {"key": "effective_spread",  "label": "Quoted spread (bps)",      "stored": False},
+            {"key": "quote_churn_rate",  "label": "Snapshot arrival rate",    "stored": False},
         ],
     },
     {
