@@ -1,116 +1,139 @@
-# Daygent | Autonomous Financial Intelligence System
+# Daygent — Operator Dashboard
 
-**An institutional-grade, agentic trading platform fusing Generative AI with high-frequency quantitative analysis.**
+**A React/Vite control panel for a self-hosted Hyperliquid trading stack: operating, charting, and visualizing.**
 
-[![System Status](https://img.shields.io/badge/System-Online-success)](https://github.com/yourusername/daygent)
-[![Architecture](https://img.shields.io/badge/Architecture-Unified%20Event%20Loop-blue)](https://github.com/yourusername/daygent)
-[![AI Core](https://img.shields.io/badge/AI%20Core-Transformer%20%2B%20LightGBM%20%2B%20RL-purple)](https://github.com/yourusername/daygent)
+This repository is the **front end and local API layer only**. The systems it operates are private and live elsewhere: the Hyperliquid node, market data, L4 book engine, execution engine, strategies, and research code. Most of it runs on a dedicated bare-metal server in Tokyo. Daygent is where I watch markets, inspect order-book structure, review strategy trades, manage positions, and drive research sessions on that server.
 
----
-
-## 🌌 The Vision: From Analysis to Agency
-
-Daygent represents the next evolution in algorithmic trading systems. While traditional platforms provide tools for *humans* to analyze markets, Daygent deploys **autonomous agent swarms** to perceive, reason, and act.
-
-It is not merely a dashboard; it is a **silicon-based market participant**.
-
-By integrating **Vector-Based Pattern Recognition**, **Large Language Models (LLMs)**, and **Reinforcement Learning (RL)** into a unified high-performance engine, Daygent automates the entire alpha generation lifecycle—from hypothesis generation to execution optimization.
+![React 19](https://img.shields.io/badge/React-19-149eca) ![Vite 6](https://img.shields.io/badge/Vite-6-646cff) ![Tailwind 4](https://img.shields.io/badge/Tailwind-4-38bdf8) ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688) ![Hyperliquid](https://img.shields.io/badge/Hyperliquid-L1-50e3c2)
 
 ---
 
-## 🧠 Core Intelligence Engines
+## What lives where
 
-### 1. "Prophet" Deep Temporal Architecture
-*   **Temporal Fusion Transformers (TFT):** The system's "Long-Term Memory." Utilizes attention-based deep learning to learn multi-horizon dependencies across time. Unlike black-box models, TFT isolates *why* a prediction was made by explicitly weighing exogenous variables (Volume, VIX, Yields) against static covariates.
-*   **Echo State Networks (ESN) & Deep Ensembles:** A reservoir computing layer that captures chaotic market dynamics where traditional RNNs fail. These "Echo Networks" operate in an ensemble with **TabNet** and **NODE**, providing calibrated uncertainty quantification (confidence intervals) alongside raw price targets.
-*   **Hybrid Cloud "Colab" Pipeline:** Heavy model training is offloaded to a distributed **Google Colab** cluster. The system automatically serializes market tensors, uploads them to the cloud for intensive TPU-based training, and hot-swaps the optimized weights back into the local inference engine without downtime.
-
-### 2. "AlphaSwarm" Multi-Agent Consensus
-*   **Role-Based Architecture:** Deploys specialized AI agents—*The Macro Analyst*, *The Technical Chartist*, *The Risk Manager*, and *The Execution Algo*—that debate and vote on every trade signal.
-*   **Cognitive Workflow:** Agents utilize Chain-of-Thought (CoT) reasoning to parse news sentiment, analyze market structure, and cross-validate signals before consensus is reached.
-*   **Transparency:** Full "Thought Logs" allow human operators to audit the AI's decision-making process in real-time.
-
-### 3. "Neural Atlas" Vector Search
-*   **Market Embedding Space:** Converts every candle sequence into a 384-dimensional vector, creating a searchable "map" of market history.
-*   **Semantic Price Action:** Allows queries like *"Show me 4H setups where consolidation broke downward with high volume after a CPI release"* by mapping natural language to vector space.
-*   **Anomaly Detection:** Uses Isolation Forests to flag "Black Swan" precursors—market structures that deviate statistically from the learned manifold of normal price action.
-
-### 4. "Chronos" Generative Backtesting
-*   **Beyond History:** Doesn't just replay past data. Uses **Generative Adversarial Networks (GANs)** to synthesize infinite "counterfactual" market scenarios (e.g., *"What if 2008 happened with today's volatility?"*).
-*   **Robustness Training:** Trains models on these synthetic futures to ensure strategies are anti-fragile and not just overfitted to historical noise.
-
----
-
-## 🏗️ The Platform: Unified Core Architecture
-
-While the Intelligence Engines provide the "Brain," the **Daygent Core** provides the "Body." The system is architected as a high-performance React 19 application backed by a unified FastAPI server, seamlessly integrating **six specialized dashboards** into a single event loop.
-
-### 🖥️ Integrated Dashboard Suite
-
-| Dashboard | Functionality & Business Value |
-| :--- | :--- |
-| **1. Data Dashboard** | **ETL & Analytics Center.** A massive data ingestion engine capable of filtering millions of rows. Features regex search, SQL-backed pagination, and export capabilities for 21+ trading tables. |
-| **2. Vector Dashboard** | **Pattern Recognition Core.** Visualizes the "Neural Atlas." Displays heatmaps of BERT/ISO vectors and computes real-time similarity matrices to find historical pattern matches. |
-| **3. Chart Dashboard** | **Professional Technical Analysis.** High-performance canvas charting (60fps) with multi-select, range-select, and "Game Mode" navigation. Synchronizes selection state globally across all dashboards. |
-| **4. Backtest Dashboard** | **Strategy Validation & Training.** The flagship environment. Replays history candle-by-candle ("Happened vs. Coming"), overlays live model predictions, and hosts the **Interactive Train Mode**. |
-| **5. Pipeline Dashboard** | **Orchestration.** Windows-native launcher for data pipelines. Spawns detached consoles for scrapers, feature engineering scripts, and vector generators. |
-| **6. LLM Dashboard** | **Agentic Interface.** The frontend for "AlphaSwarm." A chat-based interface where users can converse with the market data, view agent debates, and trigger autonomous analysis. |
-
----
-
-## 💎 Key Features Deep Dive
-
-### 🧪 Interactive "Regime-Specific" Training (Train Mode)
-**The Industry's First "Click-to-Train" UX.**
-Don't rely on a single static model. Click any point on the chart to train a **LightGBM** instance specifically on the data leading up to that moment.
-*   **Instant Regime Adaptation:** Train a model *only* on low-volatility bull markets, or *only* on high-volatility crashes.
-*   **Hyperparameter Auto-Tuning:** Automated grid search optimizes leaves, depth, and learning rates in the background.
-*   **Live Inference Overlay:** The trained model immediately projects probability cones onto the live chart.
-
-### 📐 Advanced Vector System
-Daygent doesn't just look at price; it *embeds* it.
-*   **Dynamic Vector Types:** Automatically detects and computes 8 distinct vector types per candle:
-    *   `BERT_ohlc` (384D): Semantic embeddings of price action.
-    *   `iso_ohlc` (4D): Isolation Forest anomaly scores.
-    *   `norm_ohlc` / `raw_ohlc`: Statistical normalizations.
-*   **Shape Similarity Engine:** Mathematically compares the current market structure against 10+ years of history using Manhattan, Euclidean, and Cosine distance metrics to find statistically similar setups.
-
-### 📊 Quantitative Liquidity Engine
-*   **TJR Markers (Trend Jump Reversal):** Algorithmic detection of internal liquidity shifts.
-*   **Swing Highs/Lows:** Identification of external liquidity pools and stop-run targets.
-*   **Fair Value Gaps (FVG):** Automated mapping of market inefficiencies across all timeframes.
-*   **Binary Classification Labels:** Auto-generated `future_direction` labels (0/1) for supervised learning pipelines.
-
----
-
-## ⚡ Technical Architecture
-
-Built on a **high-frequency unified architecture** to minimize latency between inference and action.
-
-| Component | Technology Stack | Capability |
+| | In this repo (public) | Private |
 | :--- | :--- | :--- |
-| **Frontend** | React 19 + WebGL + Framer Motion | **60fps Visualization.** Renders millions of data points with hardware acceleration. Features "Game Mode" navigation for fluid chart interactions. |
-| **Backend Core** | Python 3.10 (AsyncIO) + FastAPI | **Event-Driven.** Handles real-time data ingestion, vector computation, and agent orchestration in a non-blocking event loop. |
-| **Deep Learning** | PyTorch Lightning + Google Colab | **Distributed Training Grid.** Models are trained on cloud TPUs via Colab integration and served locally for millisecond-latency inference. |
-| **Data Layer** | PostgreSQL + TimescaleDB | **Hyper-Scale.** Optimized for time-series data with automatic partitioning and compression. |
-| **Compute Engine** | CUDA + Torch + LightGBM | **On-Demand Training.** "Click-to-Train" interface spins up GPU kernels to retrain models on specific market regimes instantly. |
-| **Agent Runtime** | LangGraph + Custom Orchestrator | **Stateful Autonomy.** Manages agent memory, tool access (web search, python repl), and recursive planning loops. |
+| **Interface** | React 19 + Vite dashboard (25 tabs) | — |
+| **API** | FastAPI routers the dashboard calls (`backend/`) | Shared Hyperliquid client, signing keys, proxy config |
+| **Data** | — | Node streams, Parquet store (~370 GB), TimescaleDB history |
+| **Engines** | — | L4 book engine, execution engine, strategy runners |
+| **Research** | Visualizations of research output | All research code, models, and results |
+
+Keys and configuration are never stored here: the backend reads them from files outside the repository at runtime.
 
 ---
 
-## 🚀 Deployment
+## Architecture
 
-### Prerequisites
-*   NVIDIA GPU (Ampere or newer recommended for Transformer inference)
-*   32GB+ RAM (for in-memory vector indices)
-*   PostgreSQL 15+ with `pgvector` extension
+```mermaid
+flowchart LR
+  subgraph PC["Operator PC"]
+    UI["Daygent dashboard<br/>React 19 + Vite"] -->|"REST + WebSocket"| API["FastAPI backend<br/>(this repo)"]
+    API --> TS[("TimescaleDB<br/>local market history")]
+    API --> RUN["Strategy runners<br/>(private)"]
+  end
 
-### One-Command Launch
-```bash
-# Initialize the Neural Core
-python start.py --mode=autonomous --gpu=0
+  subgraph TOKYO["Tokyo bare-metal server (private)"]
+    NODE["Hyperliquid<br/>non-validating node"] --> HOT["Hot path<br/>book diffs, order statuses, fills"]
+    HOT --> L4["L4 book engine"]
+    L4 --> EXEC["Execution engine"]
+    HOT --> PQ[("Parquet store<br/>PyArrow + zstd, DuckDB")]
+    CC["Claude Code research<br/>sessions in tmux"]
+  end
+
+  API -->|"SSH: terminal, read-only SFTP, health"| CC
+  API -->|"account, orders"| HL["Hyperliquid API"]
+  RUN --> HL
+  EXEC --> HL
+```
+
+### The private infrastructure Daygent operates
+
+**Self-hosted Hyperliquid L1 node + execution engine.** This is a non-validating node on a dedicated Tokyo bare-metal server (16 threads, 128 GB RAM, NVMe), sized to the network's peer requirements. Its history was backfilled via QuickNode. The stack targets HIP-3 growth-mode markets, where fees run about 80% below standard.
+
+- **Data pipeline.** A real-time hot path reads the node's unbuffered block-by-block streams: raw book diffs, order statuses, and fills. An asyncio/WebSocket collector adds 1-second mark, oracle, funding, and open-interest data on 347 perps. The cold path is a PyArrow/zstd Parquet store (~370 GB) queried with DuckDB.
+- **L4 book engine.** This deterministic, block-level book tracks every order's owner, queue position, and lifecycle. Live signals and replay simulation share it, and it shows zero diffs against node snapshots.
+- **Execution engine.** It quotes event-driven, block by block, with SDK-signed ALO post-only orders, re-posting, and a taker fallback. Its state is persisted, and it restarts automatically under supervision. A peer watchdog keeps the node at the chain tip.
+  - *TWAP-based, HIP-3 equity/commodity perps:* about 10 bps net per trade vs 1.8 bps in fees, a ~55% hit rate, and tens of events per day.
+  - *Closed-market maker, Asian-underlying HIP-3 names:* an example fill made about 3 bps net (SKHX) vs a ~0.05 bps maker fee. It quotes every closed session.
+
+---
+
+## Dashboard tour
+
+### Trading operations
+| Tab | What it does |
+| :--- | :--- |
+| **Hyperliquid** | Account, live positions with the exchange's liquidation price, open orders, transfers, and a strategy-runner panel. The trading station estimates the liquidation price before an order, then shows the exchange's actual figure after. |
+| **Ranker** | Operates a 10-slot cross-sectional long/short runner: arm, disarm, flatten, and retrain. It shows runner, collector, and model health, the live book, this hour's candidates, realized stats, the equity curve, and recent trades. |
+| **BTC Play** | One-button price triggers. A runner watches the BTC mid and fires a pre-set long when price crosses down through a level. |
+
+### Charting and market microstructure
+| Tab | What it does |
+| :--- | :--- |
+| **BXT Viz** | Mid-price OHLC candles stacked from stored 5-second book/trade buckets. It overlays order-book walls, taker flow, and L20 depth, and has draggable chart panes, hotkeys, and pop-out "breakout" chart tabs. |
+| **SOL OI Viz** | The BXT visualizer pointed at a strategy's trade log. You pick a strategy, step through its trades, and the chart jumps to each one with the entry and exit marked. |
+| **Deriv BXT / L2 Deep** | Per-day calendars and day-detail views of bucketed book/trade data and deep L2 order-book snapshots. |
+| **SOL / BTC / ETH / SPX** | Per-perp live views: ticks, trades, and marks streamed from Postgres `pg_notify` to the browser over WebSockets, plus history calendars. |
+| **Strat Hub** | Builds feature bundles for any asset and time window, then sends them to an LLM for structured analysis, with selectable model and reasoning effort. |
+| **DataBento** | ES futures outrights and calendar spreads: trading calendar, volume-ranked instruments, intraday and large-trade microstructure, and roll activity. |
+
+### Server operations
+| Tab | What it does |
+| :--- | :--- |
+| **Server CCode** | A live terminal to Claude Code research sessions on the Tokyo server (xterm.js over a WebSocket, sessions in tmux). It starts, switches, and resumes chats, with per-chat model/effort controls and a context and compaction meter. It also has a read-only server file browser over SFTP and an on-demand server health panel. Every route is restricted to this machine and the local dashboard origin. |
+
+### Earlier research tabs
+**Data, Vector, Chart, Backtest, LLM, Pipeline, Model, Features, V6, Delta, IMC P4.** Most of these come from the project's first phase: SPY/ES/EURUSD candles in PostgreSQL, BERT and isolation-forest candle embeddings with similarity search, and LightGBM model training and backtest replay. They also include pipeline and training launchers, plus analysis views for the IMC Prosperity 4 trading competition.
+
+---
+
+## Tech stack
+
+| Layer | Tools |
+| :--- | :--- |
+| **Front end** | React 19, Vite 6, Tailwind CSS 4, TradingView lightweight-charts v5 (multi-pane), Recharts, xterm.js |
+| **Local API** | Python, FastAPI, asyncio, WebSockets, SQLAlchemy, PostgreSQL / TimescaleDB with `pg_notify` streaming, asyncssh (SSH, SFTP, tmux) |
+| **Private stack** | Hyperliquid node + Python SDK, PyArrow, Parquet/zstd, DuckDB, LightGBM, Numba, multiprocessing, systemd, Linux |
+
+---
+
+## Repository layout
+
+```
+src/
+  App.jsx, main.jsx            app shell, theme, breakout-chart routing
+  components/
+    TradingDashboard.jsx       tab bar and dashboard router
+    BxtVisualizer.jsx          candle/wall/flow chart (lightweight-charts panes)
+    SolOiViz.jsx               strategy trade review on top of the visualizer
+    hyperliquid/               account, positions, trading station, runner panel
+    ranker/  play/             strategy-runner consoles
+    ccode/                     server terminal, chats, files, health, context meter
+    data-dashboard/  vector-dashboard/  shared/   earlier Daygent views
+backend/
+  main.py                      FastAPI app; mounts every router
+  routers/                     one router per dashboard (/api/hl, /api/ranker, /api/ccode, /api/perp, ...)
+  services/                    broadcasters, feature builder, SSH + access guard
+  tests/
 ```
 
 ---
 
-*Engineered for the post-human financial era.*
+## Running locally
+
+```bash
+npm install
+npm run dev
+```
+
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+```
+
+The front end runs on `http://localhost:5173` and the API on port 8000. The interface builds and runs standalone. However, the trading, server, and live-data tabs need the private services described above, so a fresh clone shows those tabs without data.
+
+---
+
+**Shamik Dandekar** · ML Engineer · AI model training, data engineering, market data systems · B.S. Computer Science, UC Irvine
