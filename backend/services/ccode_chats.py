@@ -5,6 +5,9 @@ Its workspace folder is /research/work/<YYYYMMDD-HHMM>-<first 8 of the chat id>[
 that are not running now.
 """
 WORK = "/research/work"
+# Context window of every chat on the server. Opus 5.5 chats auto-compacted at up to 898k tokens (Nov 6 2026), so the
+# server's chats run with the 1M window; Claude Code does not record the window in the transcript.
+WINDOW = 1_000_000
 
 
 def _folder_of(session_id, folders):
@@ -30,6 +33,15 @@ def _model_alias(model):
         if alias in (model or ""):
             return alias
     return None
+
+
+def _context(c):
+    """the snapshot's context record -> what the sidebar shows (None when the snapshot has none for this chat)"""
+    if not c:
+        return None
+    tokens = c.get("tokens")
+    return {"tokens": tokens, "window": WINDOW, "pct": None if tokens is None else round(100 * tokens / WINDOW, 1),
+            "compactions": c.get("compactions") or 0, "last_compact": c.get("last_compact")}
 
 
 def _session_by_pane(snapshot):
@@ -59,7 +71,7 @@ def build_chats(snapshot):
         s = by_pane.get(w["pane_pid"])
         if s is None:
             running.append({"window_id": w["id"], "index": w["index"], "kind": "shell", "session_id": None,
-                            "name": "shell", "folder": None, "state": "idle", "model": None})
+                            "name": "shell", "folder": None, "state": "idle", "model": None, "context": None})
             continue
         sid = s["session_id"]
         folder = _folder_of(sid, folders)
@@ -67,7 +79,8 @@ def build_chats(snapshot):
                         "name": _name(folder, titles.get(sid), "new chat"),
                         "folder": f"{WORK}/{folder}" if folder else None,
                         "state": (statuses.get(sid) or {}).get("state", "idle"),
-                        "model": _model_alias((snapshot.get("models") or {}).get(sid))})
+                        "model": _model_alias((snapshot.get("models") or {}).get(sid)),
+                        "context": _context((snapshot.get("context") or {}).get(sid))})
     live = {r["session_id"] for r in running}
     past = []
     for t in sorted(snapshot.get("transcripts") or [], key=lambda x: -x.get("mtime", 0)):

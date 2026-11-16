@@ -70,6 +70,8 @@ def snapshot():
         "guard": "ok",
         "current": "@3",
         "models": {A: "claude-opus-5-5"},
+        "context": {A: {"tokens": 382_000, "compactions": 2, "last_compact": 431_330, "t": "x"},
+                    B: {"tokens": None, "compactions": 1, "last_compact": 898_339, "t": "y"}},
     }
 
 
@@ -83,6 +85,20 @@ def test_windows_are_matched_to_chats_and_folders():
     # claude is a child of the window's shell here; the status file is missing, so it counts as idle
     assert (b["window_id"], b["session_id"], b["state"]) == ("@3", B, "idle")
     assert (shell["kind"], shell["session_id"], shell["name"]) == ("shell", None, "shell")
+
+
+def test_context_and_compactions_are_passed_on():
+    a, b, shell = build_chats(snapshot())["running"]
+    assert a["context"] == {"tokens": 382_000, "window": 1_000_000, "pct": 38.2, "compactions": 2, "last_compact": 431_330}
+    # just compacted: the new size is unknown until the next reply
+    assert b["context"]["tokens"] is None and b["context"]["pct"] is None and b["context"]["compactions"] == 1
+    assert shell["context"] is None
+
+
+def test_older_snapshot_without_context():
+    s = snapshot()
+    del s["context"]
+    assert all(c["context"] is None for c in build_chats(s)["running"])
 
 
 def test_past_chats_exclude_running_and_empty_ones_newest_first():

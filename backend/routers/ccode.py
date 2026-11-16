@@ -139,6 +139,21 @@ async def chats():
     return build_chats(json.loads(out))
 
 
+@router.get("/health")
+async def health():
+    """One on-demand check of the server (disks + growth, CPU, memory, pressure, IO, node lag). Never polled."""
+    try:
+        status, out, err = await ssh.run(ssh.HEALTH, timeout=45)
+    except (asyncio.TimeoutError, asyncssh.TimeoutError):
+        raise HTTPException(status_code=504, detail="The server didn't answer in 45 s. If the node is lagging, "
+                                                    "nodeguard pauses research processes, this check included.")
+    except (asyncssh.Error, OSError) as e:
+        raise _unreachable(e)
+    if status != 0:
+        raise HTTPException(status_code=500, detail=err.strip()[-300:] or "Health check failed")
+    return json.loads(out)
+
+
 @router.post("/chats")
 async def new_chat(body: NewChat):
     if not model_ok(body.model) or not effort_ok(body.effort):

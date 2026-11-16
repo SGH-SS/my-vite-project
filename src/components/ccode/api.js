@@ -3,7 +3,7 @@ export const CCODE_API = 'http://127.0.0.1:8000/api/ccode';
 export const CCODE_WS = 'ws://127.0.0.1:8000/api/ccode/terminal';
 
 export const MODELS = [
-  { id: 'fable', label: 'Fable 5.1' },
+  { id: 'fable', label: 'Fable 5.2' },
   { id: 'opus', label: 'Opus 5.5' },
   { id: 'sonnet', label: 'Sonnet 5.5' },
   { id: 'haiku', label: 'Haiku 5.5' },
@@ -54,3 +54,7 @@ export function fmtAge(t) {
   if (s < 129600) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} d ago`;
 }
+
+// Display-only chat names and archive (ChatList): keyed by chat id, shell windows by window id
+export const chatKey = (chat) => chat.session_id || `win:${chat.window_id}`;
+export const displayName = (chat, labels) => labels?.names?.[chatKey(chat)] || chat.name;

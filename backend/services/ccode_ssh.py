@@ -19,7 +19,8 @@ SSH_DIR = os.path.expanduser("~/.ssh")
 CLAUDE = "/home/research/.local/bin/claude"
 SNAPSHOT = "/usr/bin/python3 /research/code/ccode_snapshot.py"
 PREVIEW = "/research/venv/bin/python /research/code/ccode_preview.py"
-RESTORE_DEFAULTS = "/usr/bin/python3 /research/code/ccode_defaults.py"
+HEALTH = "nice -n 10 /usr/bin/python3 /research/code/ccode_health.py"     # on click only: ~1 s, ~4 s with a disk scan
+RESTORE_DEFAULTS ="/usr/bin/python3 /research/code/ccode_defaults.py"
 
 _conn = None
 _lock = asyncio.Lock()

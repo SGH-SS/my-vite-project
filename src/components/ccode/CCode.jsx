@@ -4,13 +4,15 @@
  * server's files. The same chats can be open in PowerShell at the same time. Backend: /api/ccode.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { cGet, cPost, winPath, MODELS, EFFORTS } from './api.js';
+import { cGet, cPost, winPath, MODELS, EFFORTS, displayName } from './api.js';
 import { readPref, writePref } from '../hyperliquid/api.js';
 import { btnCls, dimCls, strongCls, cardCls, ErrorBanner, Confirm } from '../hyperliquid/ui.jsx';
 import Terminal from './Terminal.jsx';
 import ChatList from './ChatList.jsx';
 import FileBrowser from './FileBrowser.jsx';
 import FilePreview from './FilePreview.jsx';
+import ContextMeter from './ContextMeter.jsx';
+import { HealthCard, HealthPanel } from './ServerHealth.jsx';
 
 const POLL_MS = 3000;
 const AFTER_CHANGE_MS = 1200;
@@ -42,6 +44,38 @@ export default function CCode({ isDarkMode: dark }) {
   const [settings, setSettings] = useState(() => readPref('ccode.settings', {}));   // window id -> { model, effort } set from here
   const [folder, setFolder] = useState('/research');
   const [openFile, setOpenFile] = useState(null);
+  // Display-only renames and archive (this browser only; nothing changes on the server)
+  const [labels, setLabels] = useState(() => readPref('ccode.labels', { names: {}, archived: {} }));
+  const updateLabels = (fn) => setLabels((l) => { const next = fn(l); writePref('ccode.labels', next); return next; });
+  const renameChat = (key, name) => updateLabels((l) => {
+    const names = { ...l.names };
+    if (name) names[key] = name; else delete names[key];
+    return { ...l, names };
+  });
+  const archiveChat = (key, on) => updateLabels((l) => {
+    const archived = { ...l.archived };
+    if (on) archived[key] = true; else delete archived[key];
+    return { ...l, archived };
+  });
+  const [health, setHealth] =useState(() => readPref('ccode.health', null));   // last check, kept across reloads
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [healthErr, setHealthErr] = useState(null);
+  const [healthOpen, setHealthOpen] = useState(false);
+
+  // Server health is measured only when clicked: no polling, so the dashboard adds no load to the node.
+  const checkHealth = async () => {
+    setHealthBusy(true);
+    try {
+      const r = await cGet('/health');
+      setHealth(r);
+      writePref('ccode.health', r);
+      setHealthErr(null);
+      setOpenFile(null);
+      setHealthOpen(true);
+    } catch (e) { setHealthErr(e.message); }
+    setHealthBusy(false);
+  };
+  const openPreview = (path) => { setHealthOpen(false); setOpenFile(path); };
 
   const refresh = async () => {
     try {
@@ -98,17 +132,23 @@ export default function CCode({ isDarkMode: dark }) {
     <div ref={root} className="flex gap-3" style={{ height }}>
       <aside className="flex w-72 flex-none flex-col gap-3">
         <div className={`${cardCls(dark)} min-h-0 flex-[5] !p-3`}>
-          <ChatList dark={dark} data={data} current={current} busy={busy} newModel={newModel} newEffort={newEffort}
-            setNewModel={setNewModel} setNewEffort={setNewEffort} onNew={newChat} onSelect={select} onResume={resume} onFolder={showFolder} />
+          <ChatList dark={dark} data={data} current={current} busy={busy} labels={labels} newModel={newModel} newEffort={newEffort}
+            setNewModel={setNewModel} setNewEffort={setNewEffort} onNew={newChat} onSelect={select} onResume={resume} onFolder={showFolder}
+            onRename={renameChat} onArchive={archiveChat} />
         </div>
-        <div className={`${cardCls(dark)} min-h-0 flex-[4] !p-3`}>
-          <FileBrowser dark={dark} path={folder} onGo={setFolder} selected={openFile} onOpen={setOpenFile} />
+        <div className={`${cardCls(dark)} min-h-0 flex-[3] !p-3`}>
+          <FileBrowser dark={dark} path={folder} onGo={setFolder} selected={openFile} onOpen={openPreview} />
+        </div>
+        <div className={`${cardCls(dark)} flex-none !p-3`}>
+          <HealthCard dark={dark} data={health} busy={healthBusy} err={healthErr} open={healthOpen}
+            onCheck={checkHealth} onToggle={() => { setOpenFile(null); setHealthOpen((o) => !o); }} />
         </div>
       </aside>
 
       <section className={`flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border ${dark ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className={`flex flex-none items-center gap-2 px-3 py-2 ${dark ? 'bg-gray-800' : 'bg-white'}`}>
-          <span className={`min-w-0 flex-1 truncate text-sm font-medium ${strongCls(dark)}`}>{chat ? chat.name : 'Server CCode'}</span>
+          <span className={`min-w-0 flex-1 truncate text-sm font-medium ${strongCls(dark)}`}>{chat ? displayName(chat, labels) : 'Server CCode'}</span>
+          {chat?.context && <ContextMeter dark={dark} ctx={chat.context} wide />}
           {chat?.folder && <button className={`text-xs hover:underline ${dimCls(dark)}`} onClick={() => showFolder(chat.folder)}>Folder</button>}
           {chat?.kind === 'chat' && (
             <>
@@ -126,7 +166,7 @@ export default function CCode({ isDarkMode: dark }) {
         </div>
         {confirmEnd && chat && (
           <div className="flex-none px-3 pb-3">
-            <Confirm dark={dark} title={`End "${chat.name}"?`} lines={['Closes this chat. Its folder and transcript stay, and you can resume it from Past chats.']}
+            <Confirm dark={dark} title={`End "${displayName(chat, labels)}"?`} lines={['Closes this chat. Its folder and transcript stay, and you can resume it from Past chats.']}
               yesLabel="End chat" tone="red" busy={busy} onYes={endChat} onNo={() => setConfirmEnd(false)} />
           </div>
         )}
@@ -145,6 +185,11 @@ export default function CCode({ isDarkMode: dark }) {
         {openFile && (
           <div className="h-[45%] flex-none">
             <FilePreview dark={dark} path={openFile} onClose={() => setOpenFile(null)} />
+          </div>
+        )}
+        {healthOpen && health && !openFile && (
+          <div className="h-[55%] flex-none">
+            <HealthPanel dark={dark} data={health} busy={healthBusy} onCheck={checkHealth} onClose={() => setHealthOpen(false)} />
           </div>
         )}
       </section>
